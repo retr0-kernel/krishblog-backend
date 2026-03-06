@@ -89,8 +89,19 @@ func main() {
 	postRepo := posts.NewRepository(entClient)
 	postSvc := posts.NewService(postRepo)
 
-	analyticsSvc := analytics.NewService(pg, rdb)
+	analyticsSvc := analytics.NewService(pg, rdb, log)
 	mediaSvc := media.NewService(pg, rdb)
+
+	// ── Analytics processor ───────────────────────────────────────────────────────
+	analyticsProcessor := analytics.NewProcessor(
+		analyticsSvc.Repository(),
+		rdb,
+		log,
+	)
+	processorCtx, processorCancel := context.WithCancel(context.Background())
+	defer processorCancel()
+	go analyticsProcessor.Run(processorCtx)
+	log.Info("analytics processor started")
 
 	// ── Handlers ──────────────────────────────────────────────────────────────
 	handlers := api.Handlers{

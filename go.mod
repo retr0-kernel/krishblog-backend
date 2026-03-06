@@ -10,6 +10,7 @@ require (
 	github.com/joho/godotenv v1.5.1
 	github.com/labstack/echo/v4 v4.15.1
 	github.com/lib/pq v1.11.2
+	github.com/mssola/useragent v1.0.0
 	github.com/redis/go-redis/v9 v9.18.0
 	golang.org/x/crypto v0.46.0
 	golang.org/x/oauth2 v0.35.0
