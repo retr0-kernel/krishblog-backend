@@ -6,3 +6,8 @@ bin/
 *.md
 .DS_Store
 coverage.out
+.gitignore
+node_modules
+tmp
+dist
+*.log

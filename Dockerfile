@@ -1,5 +1,5 @@
 # ── Stage 1: build ─────────────────────────────────────────────
-FROM golang:1.25-alpine AS builder
+FROM golang:1.22-alpine AS builder
 
 RUN apk add --no-cache git ca-certificates tzdata
 
@@ -10,15 +10,14 @@ RUN go mod download
 
 COPY . .
 
-# install ent
-RUN go install entgo.io/ent/cmd/ent@latest
+# generate ent BEFORE install to avoid extra memory
+RUN go run entgo.io/ent/cmd/ent generate ./ent/schema
 
-# generate ent code
-RUN ent generate ./ent/schema
+# build with limited parallelism (important for Railway builders)
+ENV GOMAXPROCS=2
 
-# build binary
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
-    go build \
+    go build -p 1 \
     -ldflags="-s -w" \
     -o server \
     ./cmd/server
@@ -31,11 +30,8 @@ RUN apk add --no-cache ca-certificates tzdata
 
 WORKDIR /app
 
-# copy binary from builder
 COPY --from=builder /app/server .
 
-# Railway will inject PORT automatically
 EXPOSE 8080
 
-# start the server
 CMD ["./server"]
