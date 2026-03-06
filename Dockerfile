@@ -10,20 +10,15 @@ RUN go mod download
 
 COPY . .
 
+# install ent
+RUN go install entgo.io/ent/cmd/ent@latest
+
+# generate ent code
+RUN ent generate ./ent/schema
+
+# build
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
     go build \
     -ldflags="-s -w" \
     -o bin/server \
     ./cmd/server
-
-# ── Stage 2: runtime ──────────────────────────────────────────────────────────
-FROM alpine:3.21
-
-RUN apk add --no-cache ca-certificates tzdata
-
-WORKDIR /app
-COPY --from=builder /app/bin/server ./server
-
-EXPOSE 8080
-
-ENTRYPOINT ["./server"]
