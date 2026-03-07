@@ -8,14 +8,17 @@ WORKDIR /app
 COPY go.mod go.sum ./
 RUN go mod download
 
+# install ent CLI
+RUN go install entgo.io/ent/cmd/ent@latest
+
 COPY . .
 
 # generate ent code
-RUN go run entgo.io/ent/cmd/ent generate ./ent/schema
+RUN ent generate ./ent/schema
 
-# build
 ENV GOMAXPROCS=2
 
+# build binary
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
     go build -p 1 \
     -ldflags="-s -w" \
