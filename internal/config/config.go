@@ -11,16 +11,17 @@ import (
 )
 
 type Config struct {
-	App           AppConfig
-	Database      DatabaseConfig
-	Redis         RedisConfig
-	JWT           JWTConfig
-	R2            R2Config
-	CORS          CORSConfig
-	RateLimit     RateLimitConfig
-	Admin         AdminConfig
-	Google        GoogleConfig
-	AllowedAdmins []string
+	App       AppConfig
+	Database  DatabaseConfig
+	Redis     RedisConfig
+	JWT       JWTConfig
+	R2        R2Config
+	CORS      CORSConfig
+	RateLimit RateLimitConfig
+	Admin     AdminConfig
+	Email     EmailConfig
+	Site      SiteConfig
+	Google    GoogleConfig
 }
 
 type AppConfig struct {
@@ -65,10 +66,32 @@ type AdminConfig struct {
 	Password string
 }
 
+type EmailConfig struct {
+	Host     string
+	Port     string
+	Username string
+	Password string
+	From     string
+}
+
+type SiteConfig struct {
+	URL  string
+	Name string
+}
+
 type GoogleConfig struct {
 	ClientID     string
 	ClientSecret string
 	RedirectURL  string
+}
+
+// IsAdminAllowed returns true if the email is allowed admin access.
+// If no allowlist is configured, only the ADMIN_EMAIL is allowed.
+func (c *Config) IsAdminAllowed(email string) bool {
+	if c.Admin.Email == "" {
+		return true // no restriction configured
+	}
+	return strings.EqualFold(email, c.Admin.Email)
 }
 
 func Load() (*Config, error) {
@@ -79,8 +102,8 @@ func Load() (*Config, error) {
 	cfg := &Config{}
 
 	cfg.App.Env = getRequired("APP_ENV")
-	cfg.App.Port = getDefault("APP_PORT", getDefault("PORT", "8080"))
-	cfg.App.Secret = getRequired("APP_SECRET")
+	cfg.App.Port = getDefault("APP_PORT", "8080")
+	cfg.App.Secret = getDefault("APP_SECRET", "dev-secret-change-me")
 
 	cfg.Database.URL = getRequired("DATABASE_URL")
 	cfg.Redis.URL = getRequired("REDIS_URL")
@@ -99,12 +122,7 @@ func Load() (*Config, error) {
 	}
 	cfg.JWT.RefreshExpiryHours = time.Duration(refreshH) * time.Hour
 
-	//cfg.R2.AccountID = getRequired("R2_ACCOUNT_ID")
-	//cfg.R2.AccessKeyID = getRequired("R2_ACCESS_KEY_ID")
-	//cfg.R2.SecretAccessKey = getRequired("R2_SECRET_ACCESS_KEY")
-	//cfg.R2.BucketName = getRequired("R2_BUCKET_NAME")
-	//cfg.R2.PublicURL = getRequired("R2_PUBLIC_URL")
-
+	// R2 — optional, server boots without it
 	cfg.R2.AccountID = getDefault("R2_ACCOUNT_ID", "")
 	cfg.R2.AccessKeyID = getDefault("R2_ACCESS_KEY_ID", "")
 	cfg.R2.SecretAccessKey = getDefault("R2_SECRET_ACCESS_KEY", "")
@@ -129,21 +147,19 @@ func Load() (*Config, error) {
 	cfg.Admin.Email = getDefault("ADMIN_EMAIL", "")
 	cfg.Admin.Password = getDefault("ADMIN_PASSWORD", "")
 
-	// Google OAuth
+	cfg.Email.Host = getDefault("SMTP_HOST", "")
+	cfg.Email.Port = getDefault("SMTP_PORT", "587")
+	cfg.Email.Username = getDefault("SMTP_USERNAME", "")
+	cfg.Email.Password = getDefault("SMTP_PASSWORD", "")
+	cfg.Email.From = getDefault("SMTP_FROM", "noreply@example.com")
+
+	cfg.Site.URL = getDefault("SITE_URL", "http://localhost:3000")
+	cfg.Site.Name = getDefault("SITE_NAME", "Krish Blog")
+
+	// Google OAuth — optional, only needed if using Google login
 	cfg.Google.ClientID = getDefault("GOOGLE_CLIENT_ID", "")
 	cfg.Google.ClientSecret = getDefault("GOOGLE_CLIENT_SECRET", "")
-	cfg.Google.RedirectURL = getDefault("GOOGLE_REDIRECT_URL", "http://localhost:8080/v1/auth/google/callback")
-
-	// Allowed admin emails (comma-separated)
-	allowedRaw := getDefault("ADMIN_ALLOWED_EMAILS", cfg.Admin.Email)
-	if allowedRaw != "" {
-		for _, e := range strings.Split(allowedRaw, ",") {
-			trimmed := strings.TrimSpace(strings.ToLower(e))
-			if trimmed != "" {
-				cfg.AllowedAdmins = append(cfg.AllowedAdmins, trimmed)
-			}
-		}
-	}
+	cfg.Google.RedirectURL = getDefault("GOOGLE_REDIRECT_URL", "")
 
 	return cfg, nil
 }
@@ -152,20 +168,10 @@ func (c *Config) IsDevelopment() bool {
 	return c.App.Env != "production"
 }
 
-func (c *Config) IsAdminAllowed(email string) bool {
-	email = strings.ToLower(strings.TrimSpace(email))
-	for _, allowed := range c.AllowedAdmins {
-		if allowed == email {
-			return true
-		}
-	}
-	return false
-}
-
 func getRequired(key string) string {
 	v := os.Getenv(key)
 	if v == "" {
-		panic(fmt.Sprintf("[config] required env var %q is not set", key))
+		panic(fmt.Sprintf("[config] required environment variable %q is not set", key))
 	}
 	return v
 }

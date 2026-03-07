@@ -14,16 +14,18 @@ import (
 	mw "krishblog/internal/middleware"
 	"krishblog/internal/posts"
 	"krishblog/internal/sections"
+	"krishblog/internal/subscribers"
 	jwtpkg "krishblog/pkg/jwt"
 )
 
 type Handlers struct {
-	Health    *health.Handler
-	Auth      *auth.Handler
-	Posts     *posts.Handler
-	Sections  *sections.Handler
-	Analytics *analytics.Handler
-	Media     *media.Handler
+	Health      *health.Handler
+	Auth        *auth.Handler
+	Posts       *posts.Handler
+	Sections    *sections.Handler
+	Analytics   *analytics.Handler
+	Media       *media.Handler
+	Subscribers *subscribers.Handler
 }
 
 type RouterConfig struct {
@@ -36,7 +38,6 @@ type RouterConfig struct {
 }
 
 func Register(e *echo.Echo, h Handlers, cfg RouterConfig) {
-	// ── Global middleware ────────────────────────────────────────────────────
 	e.Use(mw.RequestID())
 	e.Use(mw.Recover(cfg.Logger))
 	e.Use(mw.Logger(cfg.Logger))
@@ -44,23 +45,18 @@ func Register(e *echo.Echo, h Handlers, cfg RouterConfig) {
 	e.Use(mw.CORS(cfg.AllowedOrigins))
 	e.Use(echomw.Decompress())
 
-	// ── System ───────────────────────────────────────────────────────────────
 	e.GET("/health", h.Health.Live)
 	e.GET("/ready", h.Health.Ready)
 
 	v1 := e.Group("/v1")
 
-	// ── Auth ──────────────────────────────────────────────────────────────────
 	authGroup := v1.Group("/auth")
 	authGroup.Use(mw.StrictRateLimiter(cfg.Redis, 5))
 	authGroup.POST("/login", h.Auth.Login)
 	authGroup.POST("/refresh", h.Auth.Refresh)
 	authGroup.POST("/logout", h.Auth.Logout, mw.Auth(cfg.JWTManager))
 	authGroup.GET("/me", h.Auth.Me, mw.Auth(cfg.JWTManager))
-	authGroup.GET("/google", h.Auth.GoogleLogin)
-	authGroup.GET("/google/callback", h.Auth.GoogleCallback)
 
-	// ── Public ────────────────────────────────────────────────────────────────
 	pub := v1.Group("/public")
 	pub.Use(mw.RateLimiter(cfg.Redis, cfg.RPS, cfg.Burst))
 	pub.GET("/posts", h.Posts.List)
@@ -68,47 +64,52 @@ func Register(e *echo.Echo, h Handlers, cfg RouterConfig) {
 	pub.GET("/sections", h.Sections.ListPublic)
 	pub.GET("/sections/:slug", h.Sections.GetBySlug)
 
-	// ── Analytics ─────────────────────────────────────────────────────────────
-	aGroup := v1.Group("/analytics")
-	aGroup.Use(mw.RateLimiter(cfg.Redis, cfg.RPS*2, cfg.Burst*2))
-	aGroup.POST("/event", h.Analytics.RecordEvent)
-	aGroup.POST("/session/start", h.Analytics.SessionStart)
-	aGroup.POST("/session/end", h.Analytics.SessionEnd)
+	subGroup := v1.Group("/subscribe")
+	subGroup.Use(mw.StrictRateLimiter(cfg.Redis, 10))
+	subGroup.POST("", h.Subscribers.Subscribe)
+	subGroup.GET("/confirm", h.Subscribers.Confirm)
+	subGroup.GET("/unsubscribe", h.Subscribers.Unsubscribe)
 
-	// ── Admin ─────────────────────────────────────────────────────────────────
+	analyticsGroup := v1.Group("/analytics")
+	analyticsGroup.Use(mw.RateLimiter(cfg.Redis, cfg.RPS*2, cfg.Burst*2))
+	analyticsGroup.POST("/event", h.Analytics.RecordEvent)
+	analyticsGroup.POST("/session/start", h.Analytics.SessionStart)
+	analyticsGroup.POST("/session/end", h.Analytics.SessionEnd)
+
 	admin := v1.Group("/admin")
 	admin.Use(mw.Auth(cfg.JWTManager))
 	admin.Use(mw.RateLimiter(cfg.Redis, cfg.RPS, cfg.Burst))
 
-	// Posts — editor+
-	ap := admin.Group("/posts")
-	ap.Use(mw.RequireRole("editor"))
-	ap.GET("", h.Posts.AdminList)
-	ap.POST("", h.Posts.Create)
-	ap.PUT("/:id", h.Posts.Update)
-	//ap.PATCH("/:id/status", h.Posts.UpdateStatus)
-	ap.DELETE("/:id", h.Posts.Delete, mw.RequireRole("admin"))
+	adminPosts := admin.Group("/posts")
+	adminPosts.Use(mw.RequireRole("editor"))
+	adminPosts.GET("", h.Posts.AdminList)
+	adminPosts.POST("", h.Posts.Create)
+	adminPosts.PUT("/:id", h.Posts.Update)
+	adminPosts.PATCH("/:id/status", h.Posts.UpdateStatus)
+	adminPosts.DELETE("/:id", h.Posts.Delete, mw.RequireRole("admin"))
 
-	// Sections — admin+
-	as := admin.Group("/sections")
-	as.Use(mw.RequireRole("admin"))
-	as.GET("", h.Sections.AdminList)
-	as.POST("", h.Sections.Create)
-	as.PUT("/:id", h.Sections.Update)
-	as.DELETE("/:id", h.Sections.Delete)
+	adminSections := admin.Group("/sections")
+	adminSections.Use(mw.RequireRole("admin"))
+	adminSections.GET("", h.Sections.AdminList)
+	adminSections.POST("", h.Sections.Create)
+	adminSections.PUT("/:id", h.Sections.Update)
+	adminSections.DELETE("/:id", h.Sections.Delete)
 
-	// Media — editor+
-	am := admin.Group("/media")
-	am.Use(mw.RequireRole("editor"))
-	am.GET("", h.Media.List)
-	am.POST("/upload", h.Media.Upload)
-	am.PATCH("/:id", h.Media.Update)
-	am.DELETE("/:id", h.Media.Delete)
+	adminMedia := admin.Group("/media")
+	adminMedia.Use(mw.RequireRole("editor"))
+	adminMedia.GET("", h.Media.List)
+	adminMedia.POST("/upload", h.Media.Upload)
+	adminMedia.PATCH("/:id", h.Media.Update)
+	adminMedia.DELETE("/:id", h.Media.Delete)
 
-	// Analytics dashboard — viewer+
-	aa := admin.Group("/analytics")
-	aa.Use(mw.RequireRole("viewer"))
-	aa.GET("/overview", h.Analytics.AdminOverview)
-	aa.GET("/posts/:id", h.Analytics.AdminPostStats)
-	aa.GET("/realtime", h.Analytics.AdminRealtime)
+	adminAnalytics := admin.Group("/analytics")
+	adminAnalytics.Use(mw.RequireRole("viewer"))
+	adminAnalytics.GET("/overview", h.Analytics.AdminOverview)
+	adminAnalytics.GET("/posts/:id", h.Analytics.AdminPostStats)
+	adminAnalytics.GET("/realtime", h.Analytics.AdminRealtime)
+
+	adminSubs := admin.Group("/subscribers")
+	adminSubs.Use(mw.RequireRole("admin"))
+	adminSubs.GET("/stats", h.Subscribers.AdminStats)
+	adminSubs.POST("/notify", h.Subscribers.AdminNotify)
 }

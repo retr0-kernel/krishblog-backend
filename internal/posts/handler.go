@@ -1,8 +1,6 @@
 package posts
 
 import (
-	"errors"
-
 	"github.com/labstack/echo/v4"
 
 	mw "krishblog/internal/middleware"
@@ -10,7 +8,6 @@ import (
 	"krishblog/pkg/response"
 )
 
-// Handler handles post HTTP routes.
 type Handler struct {
 	svc *Service
 }
@@ -19,50 +16,50 @@ func NewHandler(svc *Service) *Handler {
 	return &Handler{svc: svc}
 }
 
-// List handles GET /v1/public/posts
+// List handles GET /public/posts
 func (h *Handler) List(c echo.Context) error {
 	p := pagination.Parse(c)
-	f := ListFilter{
-		SectionSlug: c.QueryParam("section"),
-		Search:      c.QueryParam("q"),
-		Featured:    c.QueryParam("featured") == "true",
-	}
-	posts, total, err := h.svc.ListPublished(c.Request().Context(), f, p)
+	posts, total, err := h.svc.ListPublished(
+		c.Request().Context(),
+		c.QueryParam("section"),
+		c.QueryParam("tag"),
+		c.QueryParam("q"),
+		p,
+	)
 	if err != nil {
 		return response.InternalServerError(c, mw.GetRequestID(c))
 	}
 	return response.OKWithMeta(c, posts, pagination.NewMeta(p, total))
 }
 
-// GetBySlug handles GET /v1/public/posts/:slug
+// GetBySlug handles GET /public/posts/:slug
 func (h *Handler) GetBySlug(c echo.Context) error {
-	p, err := h.svc.GetBySlug(c.Request().Context(), c.Param("slug"))
+	post, err := h.svc.GetBySlug(c.Request().Context(), c.Param("slug"))
 	if err != nil {
-		if errors.Is(err, ErrNotFound) {
-			return response.NotFound(c, "post")
-		}
-		return response.InternalServerError(c, mw.GetRequestID(c))
+		return response.NotFound(c, "post")
 	}
-	return response.OK(c, p)
+	return response.OK(c, post)
 }
 
-// AdminList handles GET /v1/admin/posts
+// AdminList handles GET /admin/posts
 func (h *Handler) AdminList(c echo.Context) error {
 	p := pagination.Parse(c)
-	f := ListFilter{
-		Status:      c.QueryParam("status"),
-		SectionSlug: c.QueryParam("section"),
-	}
-	posts, total, err := h.svc.AdminList(c.Request().Context(), f, p)
+	posts, total, err := h.svc.AdminList(
+		c.Request().Context(),
+		c.QueryParam("status"),
+		c.QueryParam("section"),
+		p,
+	)
 	if err != nil {
 		return response.InternalServerError(c, mw.GetRequestID(c))
 	}
 	return response.OKWithMeta(c, posts, pagination.NewMeta(p, total))
 }
 
-// Create handles POST /v1/admin/posts
+// Create handles POST /admin/posts
 func (h *Handler) Create(c echo.Context) error {
 	claims := mw.GetClaims(c)
+
 	var req CreateRequest
 	if err := c.Bind(&req); err != nil {
 		return response.BadRequest(c, "INVALID_BODY", "malformed request body", nil)
@@ -70,20 +67,15 @@ func (h *Handler) Create(c echo.Context) error {
 	if err := c.Validate(&req); err != nil {
 		return err
 	}
-	p, err := h.svc.Create(c.Request().Context(), claims.UserID, req)
+
+	post, err := h.svc.Create(c.Request().Context(), claims.UserID, req)
 	if err != nil {
-		if errors.Is(err, ErrSlugTaken) {
-			return response.Conflict(c, "slug already in use")
-		}
-		if errors.Is(err, ErrInvalidSection) {
-			return response.BadRequest(c, "INVALID_SECTION", "section not found", nil)
-		}
 		return response.InternalServerError(c, mw.GetRequestID(c))
 	}
-	return response.Created(c, p)
+	return response.Created(c, post)
 }
 
-// Update handles PUT /v1/admin/posts/:id
+// Update handles PUT /admin/posts/:id
 func (h *Handler) Update(c echo.Context) error {
 	var req UpdateRequest
 	if err := c.Bind(&req); err != nil {
@@ -92,25 +84,34 @@ func (h *Handler) Update(c echo.Context) error {
 	if err := c.Validate(&req); err != nil {
 		return err
 	}
-	p, err := h.svc.Update(c.Request().Context(), c.Param("id"), req)
+
+	post, err := h.svc.Update(c.Request().Context(), c.Param("id"), req)
 	if err != nil {
-		if errors.Is(err, ErrNotFound) {
-			return response.NotFound(c, "post")
-		}
-		if errors.Is(err, ErrSlugTaken) {
-			return response.Conflict(c, "slug already in use")
-		}
 		return response.InternalServerError(c, mw.GetRequestID(c))
 	}
-	return response.OK(c, p)
+	return response.OK(c, post)
 }
 
-// Delete handles DELETE /v1/admin/posts/:id
+// UpdateStatus handles PATCH /admin/posts/:id/status
+func (h *Handler) UpdateStatus(c echo.Context) error {
+	var req StatusRequest
+	if err := c.Bind(&req); err != nil {
+		return response.BadRequest(c, "INVALID_BODY", "malformed request body", nil)
+	}
+	if err := c.Validate(&req); err != nil {
+		return err
+	}
+
+	post, err := h.svc.UpdateStatus(c.Request().Context(), c.Param("id"), req.Status)
+	if err != nil {
+		return response.InternalServerError(c, mw.GetRequestID(c))
+	}
+	return response.OK(c, post)
+}
+
+// Delete handles DELETE /admin/posts/:id
 func (h *Handler) Delete(c echo.Context) error {
 	if err := h.svc.Delete(c.Request().Context(), c.Param("id")); err != nil {
-		if errors.Is(err, ErrNotFound) {
-			return response.NotFound(c, "post")
-		}
 		return response.InternalServerError(c, mw.GetRequestID(c))
 	}
 	return response.NoContent(c)

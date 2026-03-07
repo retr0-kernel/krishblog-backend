@@ -2,307 +2,341 @@ package posts
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"strings"
 	"time"
 
-	"krishblog/ent"
-	"krishblog/ent/post"
-	"krishblog/ent/section"
-	"krishblog/pkg/slug"
-	"krishblog/pkg/uuidutil"
+	"krishblog/internal/database"
+	"krishblog/pkg/pagination"
 )
 
-// Repository handles all post database operations.
 type Repository struct {
-	client *ent.Client
+	db *database.Postgres
 }
 
-func NewRepository(client *ent.Client) *Repository {
-	return &Repository{client: client}
+func NewRepository(db *database.Postgres) *Repository {
+	return &Repository{db: db}
 }
 
-func (r *Repository) ListPublished(ctx context.Context, f ListFilter) ([]*ent.Post, int, error) {
-	q := r.client.Post.
-		Query().
-		Where(post.StatusEQ(post.StatusPublished))
+// ─── public ───────────────────────────────────────────────────────────────────
 
-	if f.SectionSlug != "" {
-		q = q.Where(post.HasSectionWith(section.SlugEQ(f.SectionSlug)))
+func (r *Repository) ListPublished(ctx context.Context, section, tag, query string, p pagination.Params) ([]PostResponse, int64, error) {
+	args := []interface{}{}
+	where := []string{"p.status = 'published'"}
+	i := 1
+
+	if section != "" {
+		where = append(where, fmt.Sprintf("s.slug = $%d", i))
+		args = append(args, section)
+		i++
 	}
-	if f.Featured {
-		q = q.Where(post.IsFeaturedEQ(true))
-	}
-	if f.Search != "" {
-		term := "%" + strings.ToLower(f.Search) + "%"
-		q = q.Where(post.Or(
-			post.TitleContainsFold(f.Search),
-			post.SummaryContainsFold(term),
+	if tag != "" {
+		where = append(where, fmt.Sprintf(
+			"EXISTS (SELECT 1 FROM post_tags pt JOIN tags t ON t.id=pt.tag_id WHERE pt.post_id=p.id AND t.slug=$%d)", i,
 		))
+		args = append(args, tag)
+		i++
+	}
+	if query != "" {
+		where = append(where, fmt.Sprintf(
+			"(p.search_vector @@ plainto_tsquery('english',$%d) OR p.title ILIKE $%d OR p.excerpt ILIKE $%d)",
+			i, i+1, i+2,
+		))
+		like := "%" + query + "%"
+		args = append(args, query, like, like)
+		i += 3
 	}
 
-	total, err := q.Count(ctx)
-	if err != nil {
+	whereClause := "WHERE " + strings.Join(where, " AND ")
+
+	var total int64
+	countQ := fmt.Sprintf(
+		`SELECT COUNT(*) FROM posts p LEFT JOIN sections s ON s.id=p.section_id %s`,
+		whereClause,
+	)
+	if err := r.db.DB.QueryRowContext(ctx, countQ, args...).Scan(&total); err != nil {
 		return nil, 0, fmt.Errorf("count posts: %w", err)
 	}
 
-	page, limit := normalizePage(f.Page, f.Limit)
-	posts, err := q.
-		Order(ent.Desc(post.FieldPublishedAt)).
-		WithSection().
-		WithAuthor().
-		Limit(limit).
-		Offset((page - 1) * limit).
-		All(ctx)
-	if err != nil {
-		return nil, 0, fmt.Errorf("list posts: %w", err)
+	orderBy := "p.published_at DESC"
+	if query != "" {
+		orderBy = fmt.Sprintf(
+			"ts_rank(p.search_vector, plainto_tsquery('english',$%d)) DESC, p.published_at DESC", i,
+		)
+		args = append(args, query)
+		i++
 	}
 
-	return posts, total, nil
+	args = append(args, p.Limit, p.Offset)
+	listQ := fmt.Sprintf(`
+		SELECT p.id, p.section_id, COALESCE(s.slug,''), p.author_id, p.title, p.slug,
+		       COALESCE(p.excerpt,''), COALESCE(p.cover_image,''), COALESCE(p.cover_image_alt,''),
+		       p.status, p.is_featured, p.reading_time_min, p.word_count,
+		       p.published_at, p.created_at, p.updated_at
+		FROM posts p
+		LEFT JOIN sections s ON s.id = p.section_id
+		%s
+		ORDER BY %s
+		LIMIT $%d OFFSET $%d`, whereClause, orderBy, i, i+1)
+
+	posts, err := r.scanList(ctx, listQ, args...)
+	return posts, total, err
 }
 
-func (r *Repository) GetBySlug(ctx context.Context, s string) (*ent.Post, error) {
-	p, err := r.client.Post.
-		Query().
-		Where(
-			post.SlugEQ(s),
-			post.StatusEQ(post.StatusPublished),
-		).
-		WithSection().
-		WithAuthor().
-		WithBlocks(func(q *ent.PostBlockQuery) {
-			q.Order(ent.Asc("position"))
-		}).
-		Only(ctx)
-	if err != nil {
-		if ent.IsNotFound(err) {
-			return nil, ErrNotFound
-		}
-		return nil, fmt.Errorf("get post by slug: %w", err)
-	}
-	return p, nil
+func (r *Repository) GetBySlug(ctx context.Context, slugStr string) (*PostResponse, error) {
+	const q = `
+		SELECT p.id, p.section_id, COALESCE(s.slug,''), p.author_id, p.title, p.slug,
+		       COALESCE(p.excerpt,''), COALESCE(p.cover_image,''), COALESCE(p.cover_image_alt,''),
+		       p.status, p.is_featured, p.reading_time_min, p.word_count,
+		       p.published_at, p.created_at, p.updated_at,
+		       COALESCE(p.content,''), COALESCE(p.meta_title,''), COALESCE(p.meta_desc,'')
+		FROM posts p
+		LEFT JOIN sections s ON s.id = p.section_id
+		WHERE p.slug = $1 AND p.status = 'published'`
+	return r.scanOne(ctx, q, slugStr)
 }
 
-func (r *Repository) GetByIDAdmin(ctx context.Context, id string) (*ent.Post, error) {
-	uid, err := uuidutil.Parse(id)
-	if err != nil {
-		return nil, ErrNotFound
+// ─── admin ────────────────────────────────────────────────────────────────────
+
+func (r *Repository) AdminList(ctx context.Context, status, section string, p pagination.Params) ([]PostResponse, int64, error) {
+	args := []interface{}{}
+	where := []string{"1=1"}
+	i := 1
+
+	if status != "" {
+		where = append(where, fmt.Sprintf("p.status = $%d", i))
+		args = append(args, status)
+		i++
 	}
-	p, err := r.client.Post.
-		Query().
-		Where(post.IDEQ(uid)).
-		WithSection().
-		WithAuthor().
-		WithBlocks(func(q *ent.PostBlockQuery) {
-			q.Order(ent.Asc("position"))
-		}).
-		Only(ctx)
-	if err != nil {
-		if ent.IsNotFound(err) {
-			return nil, ErrNotFound
-		}
-		return nil, fmt.Errorf("get post by id: %w", err)
+	if section != "" {
+		where = append(where, fmt.Sprintf("s.slug = $%d", i))
+		args = append(args, section)
+		i++
 	}
-	return p, nil
+
+	whereClause := "WHERE " + strings.Join(where, " AND ")
+
+	var total int64
+	countQ := fmt.Sprintf(
+		`SELECT COUNT(*) FROM posts p LEFT JOIN sections s ON s.id=p.section_id %s`,
+		whereClause,
+	)
+	if err := r.db.DB.QueryRowContext(ctx, countQ, args...).Scan(&total); err != nil {
+		return nil, 0, fmt.Errorf("count admin posts: %w", err)
+	}
+
+	args = append(args, p.Limit, p.Offset)
+	listQ := fmt.Sprintf(`
+		SELECT p.id, p.section_id, COALESCE(s.slug,''), p.author_id, p.title, p.slug,
+		       COALESCE(p.excerpt,''), COALESCE(p.cover_image,''), COALESCE(p.cover_image_alt,''),
+		       p.status, p.is_featured, p.reading_time_min, p.word_count,
+		       p.published_at, p.created_at, p.updated_at
+		FROM posts p
+		LEFT JOIN sections s ON s.id = p.section_id
+		%s
+		ORDER BY p.updated_at DESC
+		LIMIT $%d OFFSET $%d`, whereClause, i, i+1)
+
+	posts, err := r.scanList(ctx, listQ, args...)
+	return posts, total, err
 }
 
-func (r *Repository) AdminList(ctx context.Context, f ListFilter) ([]*ent.Post, int, error) {
-	q := r.client.Post.Query()
-
-	if f.Status != "" {
-		q = q.Where(post.StatusEQ(post.Status(f.Status)))
-	}
-	if f.SectionSlug != "" {
-		q = q.Where(post.HasSectionWith(section.SlugEQ(f.SectionSlug)))
-	}
-
-	total, err := q.Count(ctx)
-	if err != nil {
-		return nil, 0, fmt.Errorf("count posts: %w", err)
-	}
-
-	page, limit := normalizePage(f.Page, f.Limit)
-	posts, err := q.
-		Order(ent.Desc(post.FieldCreatedAt)).
-		WithSection().
-		WithAuthor().
-		Limit(limit).
-		Offset((page - 1) * limit).
-		All(ctx)
-	if err != nil {
-		return nil, 0, fmt.Errorf("admin list posts: %w", err)
-	}
-
-	return posts, total, nil
-}
-
-func (r *Repository) Create(ctx context.Context, authorID string, req CreateRequest) (*ent.Post, error) {
-	authorUID, err := uuidutil.Parse(authorID)
-	if err != nil {
-		return nil, fmt.Errorf("invalid author id: %w", err)
-	}
-	sectionUID, err := uuidutil.Parse(req.SectionID)
-	if err != nil {
-		return nil, ErrInvalidSection
-	}
-
+func (r *Repository) Create(ctx context.Context, authorID string, req CreateRequest) (*PostResponse, error) {
 	sl := req.Slug
 	if sl == "" {
-		sl = slug.Generate(req.Title)
+		sl = makeSlug(req.Title)
 	}
-	sl = strings.ToLower(sl)
+	status := req.Status
+	if status == "" {
+		status = StatusDraft
+	}
+	var publishedAt *time.Time
+	if status == StatusPublished {
+		now := time.Now()
+		publishedAt = &now
+	}
+	wc := wordCount(req.Content)
+	rtm := readingTime(wc)
 
-	if err := r.assertSlugFree(ctx, sl, ""); err != nil {
+	const q = `
+		INSERT INTO posts (
+			section_id, author_id, title, slug, excerpt, content,
+			cover_image, cover_image_alt, status, is_featured,
+			reading_time_min, word_count, meta_title, meta_desc,
+			scheduled_at, published_at,
+			search_vector, created_at, updated_at
+		) VALUES (
+			$1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,
+			to_tsvector('english', $3||' '||coalesce($5,'')||' '||coalesce($6,'')),
+			NOW(), NOW()
+		)
+		RETURNING id, section_id, ''::text, author_id, title, slug,
+		          COALESCE(excerpt,''), COALESCE(cover_image,''), COALESCE(cover_image_alt,''),
+		          status, is_featured, reading_time_min, word_count,
+		          published_at, created_at, updated_at,
+		          COALESCE(content,''), COALESCE(meta_title,''), COALESCE(meta_desc,'')`
+
+	return r.scanOne(ctx, q,
+		req.SectionID, authorID, req.Title, sl, req.Excerpt, req.Content,
+		req.CoverImage, req.CoverImageAlt, status, req.IsFeatured,
+		rtm, wc, req.MetaTitle, req.MetaDesc, req.ScheduledAt, publishedAt,
+	)
+}
+
+func (r *Repository) Update(ctx context.Context, id string, req UpdateRequest) (*PostResponse, error) {
+	curr, err := r.GetByID(ctx, id)
+	if err != nil {
 		return nil, err
 	}
 
-	status := post.StatusDraft
-	if req.Status != "" {
-		status = post.Status(req.Status)
+	title := coalesceStr(req.Title, curr.Title)
+	excerpt := coalesceStr(req.Excerpt, curr.Excerpt)
+	content := coalesceStr(req.Content, curr.Content)
+	sl := coalesceStr(req.Slug, curr.Slug)
+	coverImage := coalesceStr(req.CoverImage, curr.CoverImage)
+	coverImageAlt := coalesceStr(req.CoverImageAlt, curr.CoverImageAlt)
+	sectionID := coalesceStr(req.SectionID, curr.SectionID)
+	metaTitle := coalesceStr(req.MetaTitle, curr.MetaTitle)
+	metaDesc := coalesceStr(req.MetaDesc, curr.MetaDesc)
+	isFeatured := curr.IsFeatured
+	if req.IsFeatured != nil {
+		isFeatured = *req.IsFeatured
 	}
 
-	q := r.client.Post.Create().
-		SetTitle(req.Title).
-		SetSlug(sl).
-		SetStatus(status).
-		SetPublished(status == post.StatusPublished).
-		SetIsFeatured(req.IsFeatured).
-		SetAuthorID(authorUID).
-		SetSectionID(sectionUID)
+	wc := wordCount(content)
+	rtm := readingTime(wc)
 
-	if req.Summary != "" {
-		q = q.SetSummary(req.Summary)
-	}
-	if req.CoverImage != "" {
-		q = q.SetCoverImage(req.CoverImage)
-	}
-	if req.CoverImageAlt != "" {
-		q = q.SetCoverImageAlt(req.CoverImageAlt)
-	}
-	if req.MetaTitle != "" {
-		q = q.SetMetaTitle(req.MetaTitle)
-	}
-	if req.MetaDesc != "" {
-		q = q.SetMetaDesc(req.MetaDesc)
-	}
-	if status == post.StatusPublished {
-		now := time.Now()
-		q = q.SetPublishedAt(now)
-	}
-	if req.ScheduledAt != nil {
-		q = q.SetScheduledAt(*req.ScheduledAt)
-	}
+	const q = `
+		UPDATE posts SET
+			section_id=$1, title=$2, slug=$3, excerpt=$4, content=$5,
+			cover_image=$6, cover_image_alt=$7, is_featured=$8,
+			reading_time_min=$9, word_count=$10,
+			meta_title=$11, meta_desc=$12, scheduled_at=$13,
+			updated_at=NOW(),
+			search_vector=to_tsvector('english',$2||' '||coalesce($4,'')||' '||coalesce($5,''))
+		WHERE id=$14
+		RETURNING id, section_id, ''::text, author_id, title, slug,
+		          COALESCE(excerpt,''), COALESCE(cover_image,''), COALESCE(cover_image_alt,''),
+		          status, is_featured, reading_time_min, word_count,
+		          published_at, created_at, updated_at,
+		          COALESCE(content,''), COALESCE(meta_title,''), COALESCE(meta_desc,'')`
 
-	p, err := q.Save(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("create post: %w", err)
-	}
-	return p, nil
+	return r.scanOne(ctx, q,
+		sectionID, title, sl, excerpt, content,
+		coverImage, coverImageAlt, isFeatured,
+		rtm, wc, metaTitle, metaDesc, req.ScheduledAt, id,
+	)
 }
 
-func (r *Repository) Update(ctx context.Context, id string, req UpdateRequest) (*ent.Post, error) {
-	uid, err := uuidutil.Parse(id)
-	if err != nil {
-		return nil, ErrNotFound
+func (r *Repository) UpdateStatus(ctx context.Context, id string, status PostStatus) (*PostResponse, error) {
+	publishedClause := ""
+	if status == StatusPublished {
+		publishedClause = ", published_at = COALESCE(published_at, NOW())"
 	}
+	q := fmt.Sprintf(`
+		UPDATE posts SET status=$1, updated_at=NOW()%s
+		WHERE id=$2
+		RETURNING id, section_id, ''::text, author_id, title, slug,
+		          COALESCE(excerpt,''), COALESCE(cover_image,''), COALESCE(cover_image_alt,''),
+		          status, is_featured, reading_time_min, word_count,
+		          published_at, created_at, updated_at,
+		          COALESCE(content,''), COALESCE(meta_title,''), COALESCE(meta_desc,'')`,
+		publishedClause)
 
-	q := r.client.Post.UpdateOneID(uid)
-
-	if req.Title != "" {
-		q = q.SetTitle(req.Title)
-	}
-	if req.Slug != "" {
-		sl := strings.ToLower(req.Slug)
-		if err := r.assertSlugFree(ctx, sl, id); err != nil {
-			return nil, err
-		}
-		q = q.SetSlug(sl)
-	}
-	if req.SectionID != "" {
-		sid, err := uuidutil.Parse(req.SectionID)
-		if err != nil {
-			return nil, ErrInvalidSection
-		}
-		q = q.SetSectionID(sid)
-	}
-	if req.Summary != "" {
-		q = q.SetSummary(req.Summary)
-	}
-	if req.CoverImage != "" {
-		q = q.SetCoverImage(req.CoverImage)
-	}
-	if req.CoverImageAlt != "" {
-		q = q.SetCoverImageAlt(req.CoverImageAlt)
-	}
-	if req.MetaTitle != "" {
-		q = q.SetMetaTitle(req.MetaTitle)
-	}
-	if req.MetaDesc != "" {
-		q = q.SetMetaDesc(req.MetaDesc)
-	}
-	if req.IsFeatured != nil {
-		q = q.SetIsFeatured(*req.IsFeatured)
-	}
-	if req.Status != "" {
-		q = q.SetStatus(post.Status(req.Status))
-		q = q.SetPublished(req.Status == StatusPublished)
-		if req.Status == StatusPublished {
-			q = q.SetPublishedAt(time.Now())
-		}
-	}
-	if req.ScheduledAt != nil {
-		q = q.SetScheduledAt(*req.ScheduledAt)
-	}
-
-	p, err := q.Save(ctx)
-	if err != nil {
-		if ent.IsNotFound(err) {
-			return nil, ErrNotFound
-		}
-		return nil, fmt.Errorf("update post: %w", err)
-	}
-	return p, nil
+	return r.scanOne(ctx, q, status, id)
 }
 
 func (r *Repository) Delete(ctx context.Context, id string) error {
-	uid, err := uuidutil.Parse(id)
+	_, err := r.db.DB.ExecContext(ctx, `DELETE FROM posts WHERE id=$1`, id)
+	return err
+}
+
+func (r *Repository) GetByID(ctx context.Context, id string) (*PostResponse, error) {
+	const q = `
+		SELECT p.id, p.section_id, COALESCE(s.slug,''), p.author_id, p.title, p.slug,
+		       COALESCE(p.excerpt,''), COALESCE(p.cover_image,''), COALESCE(p.cover_image_alt,''),
+		       p.status, p.is_featured, p.reading_time_min, p.word_count,
+		       p.published_at, p.created_at, p.updated_at,
+		       COALESCE(p.content,''), COALESCE(p.meta_title,''), COALESCE(p.meta_desc,'')
+		FROM posts p
+		LEFT JOIN sections s ON s.id = p.section_id
+		WHERE p.id=$1`
+	return r.scanOne(ctx, q, id)
+}
+
+// ─── scan helpers ─────────────────────────────────────────────────────────────
+
+// scanList — 17 columns (no content/meta, has section_slug)
+func (r *Repository) scanList(_ context.Context, q string, args ...interface{}) ([]PostResponse, error) {
+	rows, err := r.db.DB.QueryContext(context.Background(), q, args...)
 	if err != nil {
-		return ErrNotFound
+		return nil, fmt.Errorf("query posts: %w", err)
 	}
-	if err := r.client.Post.DeleteOneID(uid).Exec(ctx); err != nil {
-		if ent.IsNotFound(err) {
-			return ErrNotFound
+	defer rows.Close()
+
+	var posts []PostResponse
+	for rows.Next() {
+		var p PostResponse
+		if err := rows.Scan(
+			&p.ID, &p.SectionID, &p.SectionSlug, &p.AuthorID, &p.Title, &p.Slug,
+			&p.Excerpt, &p.CoverImage, &p.CoverImageAlt,
+			&p.Status, &p.IsFeatured, &p.ReadingTimeMin, &p.WordCount,
+			&p.PublishedAt, &p.CreatedAt, &p.UpdatedAt,
+		); err != nil {
+			return nil, fmt.Errorf("scan post: %w", err)
 		}
-		return fmt.Errorf("delete post: %w", err)
+		posts = append(posts, p)
 	}
-	return nil
+	if posts == nil {
+		posts = []PostResponse{}
+	}
+	return posts, rows.Err()
 }
 
-func (r *Repository) assertSlugFree(ctx context.Context, sl, excludeID string) error {
-	q := r.client.Post.Query().Where(post.SlugEQ(sl))
-	if excludeID != "" {
-		uid, _ := uuidutil.Parse(excludeID)
-		q = q.Where(post.IDNEQ(uid))
+// scanOne — 19 columns (includes content + meta, has section_slug)
+func (r *Repository) scanOne(_ context.Context, q string, args ...interface{}) (*PostResponse, error) {
+	var p PostResponse
+	err := r.db.DB.QueryRowContext(context.Background(), q, args...).Scan(
+		&p.ID, &p.SectionID, &p.SectionSlug, &p.AuthorID, &p.Title, &p.Slug,
+		&p.Excerpt, &p.CoverImage, &p.CoverImageAlt,
+		&p.Status, &p.IsFeatured, &p.ReadingTimeMin, &p.WordCount,
+		&p.PublishedAt, &p.CreatedAt, &p.UpdatedAt,
+		&p.Content, &p.MetaTitle, &p.MetaDesc,
+	)
+	if err == sql.ErrNoRows {
+		return nil, fmt.Errorf("post not found")
 	}
-	exists, err := q.Exist(ctx)
 	if err != nil {
-		return fmt.Errorf("check slug: %w", err)
+		return nil, fmt.Errorf("scan post: %w", err)
 	}
-	if exists {
-		return ErrSlugTaken
-	}
-	return nil
+	return &p, nil
 }
 
-func normalizePage(page, limit int) (int, int) {
-	if page < 1 {
-		page = 1
+// ─── helpers ──────────────────────────────────────────────────────────────────
+
+func wordCount(s string) int { return len(strings.Fields(s)) }
+func readingTime(wc int) int {
+	if wc/200 < 1 {
+		return 1
 	}
-	if limit < 1 {
-		limit = 10
+	return wc / 200
+}
+func coalesceStr(a, b string) string {
+	if a != "" {
+		return a
 	}
-	if limit > 100 {
-		limit = 100
+	return b
+}
+
+func makeSlug(title string) string {
+	s := strings.ToLower(title)
+	s = strings.NewReplacer(" ", "-", "_", "-").Replace(s)
+	var b strings.Builder
+	for _, r := range s {
+		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') || r == '-' {
+			b.WriteRune(r)
+		}
 	}
-	return page, limit
+	return strings.Trim(b.String(), "-")
 }
