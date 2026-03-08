@@ -164,12 +164,11 @@ func (r *Repository) Create(ctx context.Context, authorID string, req CreateRequ
 			section_id, author_id, title, slug, excerpt, content,
 			cover_image, cover_image_alt, status, is_featured,
 			reading_time_min, word_count, meta_title, meta_desc,
-			scheduled_at, published_at,
-			search_vector, created_at, updated_at
+			scheduled_at, published_at, created_at, updated_at,
+			search_vector
 		) VALUES (
-			$1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,
-			to_tsvector('english', $3||' '||coalesce($5,'')||' '||coalesce($6,'')),
-			NOW(), NOW()
+			$1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,NOW(),NOW(),
+			to_tsvector('english', $3||' '||COALESCE($5,'')||' '||COALESCE($6,''))
 		)
 		RETURNING id, section_id, ''::text, author_id, title, slug,
 		          COALESCE(excerpt,''), COALESCE(cover_image,''), COALESCE(cover_image_alt,''),
