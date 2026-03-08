@@ -168,7 +168,7 @@ func (r *Repository) Create(ctx context.Context, authorID string, req CreateRequ
 			search_vector
 		) VALUES (
 			$1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,NOW(),NOW(),
-			to_tsvector('english', $3||' '||COALESCE($5,'')||' '||COALESCE($6,''))
+			to_tsvector('english', $3::text||' '||COALESCE($5::text,'')||' '||COALESCE($6::text,''))
 		)
 		RETURNING id, section_id, ''::text, author_id, title, slug,
 		          COALESCE(excerpt,''), COALESCE(cover_image,''), COALESCE(cover_image_alt,''),
@@ -213,7 +213,7 @@ func (r *Repository) Update(ctx context.Context, id string, req UpdateRequest) (
 			reading_time_min=$9, word_count=$10,
 			meta_title=$11, meta_desc=$12, scheduled_at=$13,
 			updated_at=NOW(),
-			search_vector=to_tsvector('english',$2||' '||coalesce($4,'')||' '||coalesce($5,''))
+			search_vector=to_tsvector('english',$2::text||' '||coalesce($4::text,'')||' '||coalesce($5::text,''))
 		WHERE id=$14
 		RETURNING id, section_id, ''::text, author_id, title, slug,
 		          COALESCE(excerpt,''), COALESCE(cover_image,''), COALESCE(cover_image_alt,''),
