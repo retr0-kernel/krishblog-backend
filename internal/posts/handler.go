@@ -70,6 +70,7 @@ func (h *Handler) Create(c echo.Context) error {
 
 	post, err := h.svc.Create(c.Request().Context(), claims.UserID, req)
 	if err != nil {
+		c.Logger().Error("failed to create post: ", err)
 		return response.InternalServerError(c, mw.GetRequestID(c))
 	}
 	return response.Created(c, post)
@@ -87,6 +88,7 @@ func (h *Handler) Update(c echo.Context) error {
 
 	post, err := h.svc.Update(c.Request().Context(), c.Param("id"), req)
 	if err != nil {
+		c.Logger().Error("failed to update post: ", err)
 		return response.InternalServerError(c, mw.GetRequestID(c))
 	}
 	return response.OK(c, post)
@@ -104,6 +106,7 @@ func (h *Handler) UpdateStatus(c echo.Context) error {
 
 	post, err := h.svc.UpdateStatus(c.Request().Context(), c.Param("id"), req.Status)
 	if err != nil {
+		c.Logger().Error("failed to update post status: ", err)
 		return response.InternalServerError(c, mw.GetRequestID(c))
 	}
 	return response.OK(c, post)

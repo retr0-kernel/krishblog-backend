@@ -136,6 +136,13 @@ func main() {
 			})
 			return
 		}
+		// Log the actual error for debugging
+		log.Error("unhandled error",
+			"error", err,
+			"path", c.Request().URL.Path,
+			"method", c.Request().Method,
+			"request_id", mw.GetRequestID(c),
+		)
 		_ = c.JSON(http.StatusInternalServerError, map[string]interface{}{
 			"success": false,
 			"error": map[string]interface{}{
