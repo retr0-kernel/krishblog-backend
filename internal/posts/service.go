@@ -43,3 +43,7 @@ func (s *Service) UpdateStatus(ctx context.Context, id string, status PostStatus
 func (s *Service) Delete(ctx context.Context, id string) error {
 	return s.repo.Delete(ctx, id)
 }
+
+func (s *Service) GetByID(ctx context.Context, id string) (*PostResponse, error) {
+	return s.repo.GetByID(ctx, id)
+}

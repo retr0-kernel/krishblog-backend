@@ -83,6 +83,7 @@ func Register(e *echo.Echo, h Handlers, cfg RouterConfig) {
 	adminPosts := admin.Group("/posts")
 	adminPosts.Use(mw.RequireRole("editor"))
 	adminPosts.GET("", h.Posts.AdminList)
+	adminPosts.GET("/:id", h.Posts.AdminGet)
 	adminPosts.POST("", h.Posts.Create)
 	adminPosts.PUT("/:id", h.Posts.Update)
 	adminPosts.PATCH("/:id/status", h.Posts.UpdateStatus)
