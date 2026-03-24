@@ -336,3 +336,16 @@ func makeSlug(title string) string {
 	}
 	return strings.Trim(b.String(), "-")
 }
+
+func (r *Repository) AdminGetBySlug(ctx context.Context, slug string) (*PostResponse, error) {
+	const q = `
+        SELECT p.id, p.section_id, COALESCE(s.slug,''), p.author_id, p.title, p.slug,
+               COALESCE(p.excerpt,''), COALESCE(p.cover_image,''), COALESCE(p.cover_image_alt,''),
+               p.status, p.is_featured, p.reading_time_min, p.word_count,
+               p.published_at, p.created_at, p.updated_at,
+               COALESCE(p.content,''), COALESCE(p.meta_title,''), COALESCE(p.meta_desc,'')
+        FROM posts p
+        LEFT JOIN sections s ON s.id = p.section_id
+        WHERE p.slug = $1`
+	return r.scanOne(ctx, q, slug)
+}

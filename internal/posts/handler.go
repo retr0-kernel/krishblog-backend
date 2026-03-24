@@ -120,3 +120,11 @@ func (h *Handler) Delete(c echo.Context) error {
 	}
 	return response.NoContent(c)
 }
+
+func (h *Handler) AdminGetBySlug(c echo.Context) error {
+	post, err := h.svc.AdminGetBySlug(c.Request().Context(), c.Param("slug"))
+	if err != nil {
+		return response.NotFound(c, "post")
+	}
+	return response.OK(c, post)
+}
