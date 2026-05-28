@@ -7,6 +7,7 @@ import (
 	"os"
 	"time"
 
+	"krishblog/internal/analytics"
 	"krishblog/internal/database"
 
 	"github.com/joho/godotenv"
@@ -41,6 +42,17 @@ func main() {
 	log.Println("running migrations...")
 	if err := database.RunMigrations(ctx, client); err != nil {
 		log.Fatalf("migration failed: %v", err)
+	}
+
+	log.Println("running custom migrations (comments, claps)...")
+	if err := database.RunCustomMigrations(ctx, pg); err != nil {
+		log.Fatalf("custom migration failed: %v", err)
+	}
+
+	log.Println("applying analytics schema patches (ip_hash, browser, os, recorded_at)...")
+	analyticsRepo := analytics.NewRepository(pg)
+	if err := analyticsRepo.ApplySchemaPatches(ctx); err != nil {
+		log.Fatalf("analytics schema patch failed: %v", err)
 	}
 
 	fmt.Println("✓ migrations complete")

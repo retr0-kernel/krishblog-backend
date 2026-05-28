@@ -9,6 +9,8 @@ import (
 	"krishblog/internal/analytics"
 	"krishblog/internal/api/health"
 	"krishblog/internal/auth"
+	"krishblog/internal/claps"
+	"krishblog/internal/comments"
 	"krishblog/internal/database"
 	"krishblog/internal/media"
 	mw "krishblog/internal/middleware"
@@ -26,6 +28,8 @@ type Handlers struct {
 	Analytics   *analytics.Handler
 	Media       *media.Handler
 	Subscribers *subscribers.Handler
+	Comments    *comments.Handler
+	Claps       *claps.Handler
 }
 
 type RouterConfig struct {
@@ -63,6 +67,10 @@ func Register(e *echo.Echo, h Handlers, cfg RouterConfig) {
 	pub.GET("/posts/:slug", h.Posts.GetBySlug)
 	pub.GET("/sections", h.Sections.ListPublic)
 	pub.GET("/sections/:slug", h.Sections.GetBySlug)
+	pub.GET("/posts/:postId/comments", h.Comments.ListPublic)
+	pub.POST("/posts/:postId/comments", h.Comments.Create)
+	pub.GET("/posts/:postId/claps", h.Claps.Get)
+	pub.POST("/posts/:postId/claps", h.Claps.Clap)
 
 	subGroup := v1.Group("/subscribe")
 	subGroup.Use(mw.StrictRateLimiter(cfg.Redis, 10))
@@ -113,4 +121,11 @@ func Register(e *echo.Echo, h Handlers, cfg RouterConfig) {
 	adminSubs.Use(mw.RequireRole("admin"))
 	adminSubs.GET("/stats", h.Subscribers.AdminStats)
 	adminSubs.POST("/notify", h.Subscribers.AdminNotify)
+
+	adminComments := admin.Group("/comments")
+	adminComments.Use(mw.RequireRole("editor"))
+	adminComments.GET("", h.Comments.AdminList)
+	adminComments.PATCH("/:id/approve", h.Comments.AdminApprove)
+	adminComments.POST("/:id/reply", h.Comments.AdminReply)
+	adminComments.DELETE("/:id", h.Comments.AdminDelete)
 }

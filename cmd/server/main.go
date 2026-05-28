@@ -15,6 +15,8 @@ import (
 	"krishblog/internal/api"
 	"krishblog/internal/api/health"
 	"krishblog/internal/auth"
+	"krishblog/internal/claps"
+	"krishblog/internal/comments"
 	"krishblog/internal/config"
 	"krishblog/internal/database"
 	"krishblog/internal/media"
@@ -95,6 +97,9 @@ func main() {
 		SiteName: cfg.Site.Name,
 	}, log)
 
+	commentsSvc := comments.NewService(pg)
+	clapsSvc := claps.NewService(pg)
+
 	// ── Handlers ──────────────────────────────────────────────────────────────
 	handlers := api.Handlers{
 		Health: health.New(health.Dependencies{
@@ -109,6 +114,8 @@ func main() {
 		Analytics:   analytics.NewHandler(analyticsSvc),
 		Media:       media.NewHandler(mediaSvc),
 		Subscribers: subscribers.NewHandler(subSvc),
+		Comments:    comments.NewHandler(commentsSvc),
+		Claps:       claps.NewHandler(clapsSvc),
 	}
 
 	// ── Analytics background processor ────────────────────────────────────────

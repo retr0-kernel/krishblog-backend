@@ -33,6 +33,7 @@ func (AnalyticsEvent) Fields() []ent.Field {
 				"page_view",
 				"post_view",
 				"scroll_depth",
+				"read_complete",
 				"click",
 				"search",
 				"session_start",

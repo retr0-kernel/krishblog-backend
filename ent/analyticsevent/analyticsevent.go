@@ -104,6 +104,7 @@ const (
 	EventTypePageView     EventType = "page_view"
 	EventTypePostView     EventType = "post_view"
 	EventTypeScrollDepth  EventType = "scroll_depth"
+	EventTypeReadComplete EventType = "read_complete"
 	EventTypeClick        EventType = "click"
 	EventTypeSearch       EventType = "search"
 	EventTypeSessionStart EventType = "session_start"
@@ -117,7 +118,7 @@ func (et EventType) String() string {
 // EventTypeValidator is a validator for the "event_type" field enum values. It is called by the builders before save.
 func EventTypeValidator(et EventType) error {
 	switch et {
-	case EventTypePageView, EventTypePostView, EventTypeScrollDepth, EventTypeClick, EventTypeSearch, EventTypeSessionStart, EventTypeSessionEnd:
+	case EventTypePageView, EventTypePostView, EventTypeScrollDepth, EventTypeReadComplete, EventTypeClick, EventTypeSearch, EventTypeSessionStart, EventTypeSessionEnd:
 		return nil
 	default:
 		return fmt.Errorf("analyticsevent: invalid enum value for event_type field: %q", et)

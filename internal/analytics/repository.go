@@ -22,20 +22,23 @@ func NewRepository(db *database.Postgres) *Repository {
 // ApplySchemaPatches adds analytics-specific columns that Ent doesn't manage.
 // Idempotent — safe to call on every boot.
 func (r *Repository) ApplySchemaPatches(ctx context.Context) error {
-	_, err := r.db.DB.ExecContext(ctx, `
-		ALTER TABLE analytics_events
-		  ADD COLUMN IF NOT EXISTS ip_hash    TEXT         NOT NULL DEFAULT '',
-		  ADD COLUMN IF NOT EXISTS browser    TEXT         NOT NULL DEFAULT '',
-		  ADD COLUMN IF NOT EXISTS os         TEXT         NOT NULL DEFAULT '',
-		  ADD COLUMN IF NOT EXISTS recorded_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+	patches := []string{
+		`ALTER TABLE analytics_events
+		  ADD COLUMN IF NOT EXISTS ip_hash     TEXT         NOT NULL DEFAULT '',
+		  ADD COLUMN IF NOT EXISTS browser     TEXT         NOT NULL DEFAULT '',
+		  ADD COLUMN IF NOT EXISTS os          TEXT         NOT NULL DEFAULT '',
+		  ADD COLUMN IF NOT EXISTS recorded_at TIMESTAMPTZ  NOT NULL DEFAULT NOW()`,
 
-		CREATE INDEX IF NOT EXISTS idx_ae_ip_hash    ON analytics_events(ip_hash);
-		CREATE INDEX IF NOT EXISTS idx_ae_browser    ON analytics_events(browser);
-		CREATE INDEX IF NOT EXISTS idx_ae_post_time  ON analytics_events(post_id, recorded_at DESC);
-		CREATE INDEX IF NOT EXISTS idx_ae_session_ts ON analytics_events(session_id, recorded_at DESC);
-	`)
-	if err != nil {
-		return fmt.Errorf("analytics schema patch: %w", err)
+		`CREATE INDEX IF NOT EXISTS idx_ae_ip_hash    ON analytics_events(ip_hash)`,
+		`CREATE INDEX IF NOT EXISTS idx_ae_browser    ON analytics_events(browser)`,
+		`CREATE INDEX IF NOT EXISTS idx_ae_post_time  ON analytics_events(post_id, recorded_at DESC)`,
+		`CREATE INDEX IF NOT EXISTS idx_ae_session_ts ON analytics_events(session_id, recorded_at DESC)`,
+	}
+
+	for _, stmt := range patches {
+		if _, err := r.db.DB.ExecContext(ctx, stmt); err != nil {
+			return fmt.Errorf("analytics schema patch: %w", err)
+		}
 	}
 	return nil
 }
@@ -51,21 +54,21 @@ func (r *Repository) InsertEvent(ctx context.Context, e enrichedEvent) error {
 	_, err := r.db.DB.ExecContext(ctx, `
 		INSERT INTO analytics_events (
 			event_type, session_id,
-			post_id, section_id,
+			post_id,
 			path, referrer,
 			scroll_pct, duration_ms,
 			ip_hash, country, device, browser, os,
 			metadata, recorded_at
 		) VALUES (
 			$1,  $2,
-			NULLIF($3,  '')::uuid, NULLIF($4,  '')::uuid,
-			$5,  $6,
-			$7,  $8,
-			$9,  $10, $11, $12, $13,
-			$14, $15
+			NULLIF($3, '')::uuid,
+			$4,  $5,
+			$6,  $7,
+			$8,  $9, $10, $11, $12,
+			$13, $14
 		)`,
 		e.Type, e.SessionID,
-		e.PostID, e.SectionID,
+		e.PostID,
 		e.Path, e.Referrer,
 		e.ScrollPct, e.DurationMs,
 		e.IPHash, e.Country, e.Device, e.Browser, e.OS,

@@ -11,7 +11,7 @@ var (
 	// AnalyticsEventsColumns holds the columns for the "analytics_events" table.
 	AnalyticsEventsColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeUUID},
-		{Name: "event_type", Type: field.TypeEnum, Enums: []string{"page_view", "post_view", "scroll_depth", "click", "search", "session_start", "session_end"}},
+		{Name: "event_type", Type: field.TypeEnum, Enums: []string{"page_view", "post_view", "scroll_depth", "read_complete", "click", "search", "session_start", "session_end"}},
 		{Name: "session_id", Type: field.TypeString, Size: 100},
 		{Name: "device", Type: field.TypeEnum, Enums: []string{"desktop", "tablet", "mobile", "unknown"}, Default: "unknown"},
 		{Name: "country", Type: field.TypeString, Nullable: true, Size: 2},
