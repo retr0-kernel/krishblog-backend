@@ -24,7 +24,7 @@ func RunMigrations(ctx context.Context, client *ent.Client) error {
 	if err := client.Schema.Create(
 		ctx,
 		migrate.WithDropIndex(true),
-		migrate.WithDropColumn(true),
+		migrate.WithDropColumn(false),
 	); err != nil {
 		return fmt.Errorf("ent migrate: %w", err)
 	}

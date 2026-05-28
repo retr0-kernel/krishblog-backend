@@ -267,51 +267,51 @@ func init() {
 	// post.SummaryValidator is a validator for the "summary" field. It is called by the builders before save.
 	post.SummaryValidator = postDescSummary.Validators[0].(func(string) error)
 	// postDescCoverImage is the schema descriptor for cover_image field.
-	postDescCoverImage := postFields[6].Descriptor()
+	postDescCoverImage := postFields[7].Descriptor()
 	// post.CoverImageValidator is a validator for the "cover_image" field. It is called by the builders before save.
 	post.CoverImageValidator = postDescCoverImage.Validators[0].(func(string) error)
 	// postDescCoverImageAlt is the schema descriptor for cover_image_alt field.
-	postDescCoverImageAlt := postFields[7].Descriptor()
+	postDescCoverImageAlt := postFields[8].Descriptor()
 	// post.CoverImageAltValidator is a validator for the "cover_image_alt" field. It is called by the builders before save.
 	post.CoverImageAltValidator = postDescCoverImageAlt.Validators[0].(func(string) error)
 	// postDescPublished is the schema descriptor for published field.
-	postDescPublished := postFields[9].Descriptor()
+	postDescPublished := postFields[10].Descriptor()
 	// post.DefaultPublished holds the default value on creation for the published field.
 	post.DefaultPublished = postDescPublished.Default.(bool)
 	// postDescReadTime is the schema descriptor for read_time field.
-	postDescReadTime := postFields[10].Descriptor()
+	postDescReadTime := postFields[11].Descriptor()
 	// post.DefaultReadTime holds the default value on creation for the read_time field.
 	post.DefaultReadTime = postDescReadTime.Default.(int)
 	// post.ReadTimeValidator is a validator for the "read_time" field. It is called by the builders before save.
 	post.ReadTimeValidator = postDescReadTime.Validators[0].(func(int) error)
 	// postDescWordCount is the schema descriptor for word_count field.
-	postDescWordCount := postFields[11].Descriptor()
+	postDescWordCount := postFields[12].Descriptor()
 	// post.DefaultWordCount holds the default value on creation for the word_count field.
 	post.DefaultWordCount = postDescWordCount.Default.(int)
 	// post.WordCountValidator is a validator for the "word_count" field. It is called by the builders before save.
 	post.WordCountValidator = postDescWordCount.Validators[0].(func(int) error)
 	// postDescIsFeatured is the schema descriptor for is_featured field.
-	postDescIsFeatured := postFields[12].Descriptor()
+	postDescIsFeatured := postFields[13].Descriptor()
 	// post.DefaultIsFeatured holds the default value on creation for the is_featured field.
 	post.DefaultIsFeatured = postDescIsFeatured.Default.(bool)
 	// postDescMetaTitle is the schema descriptor for meta_title field.
-	postDescMetaTitle := postFields[13].Descriptor()
+	postDescMetaTitle := postFields[14].Descriptor()
 	// post.MetaTitleValidator is a validator for the "meta_title" field. It is called by the builders before save.
 	post.MetaTitleValidator = postDescMetaTitle.Validators[0].(func(string) error)
 	// postDescMetaDesc is the schema descriptor for meta_desc field.
-	postDescMetaDesc := postFields[14].Descriptor()
+	postDescMetaDesc := postFields[15].Descriptor()
 	// post.MetaDescValidator is a validator for the "meta_desc" field. It is called by the builders before save.
 	post.MetaDescValidator = postDescMetaDesc.Validators[0].(func(string) error)
 	// postDescOgImage is the schema descriptor for og_image field.
-	postDescOgImage := postFields[15].Descriptor()
+	postDescOgImage := postFields[16].Descriptor()
 	// post.OgImageValidator is a validator for the "og_image" field. It is called by the builders before save.
 	post.OgImageValidator = postDescOgImage.Validators[0].(func(string) error)
 	// postDescCreatedAt is the schema descriptor for created_at field.
-	postDescCreatedAt := postFields[18].Descriptor()
+	postDescCreatedAt := postFields[19].Descriptor()
 	// post.DefaultCreatedAt holds the default value on creation for the created_at field.
 	post.DefaultCreatedAt = postDescCreatedAt.Default.(func() time.Time)
 	// postDescUpdatedAt is the schema descriptor for updated_at field.
-	postDescUpdatedAt := postFields[19].Descriptor()
+	postDescUpdatedAt := postFields[20].Descriptor()
 	// post.DefaultUpdatedAt holds the default value on creation for the updated_at field.
 	post.DefaultUpdatedAt = postDescUpdatedAt.Default.(func() time.Time)
 	// post.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.

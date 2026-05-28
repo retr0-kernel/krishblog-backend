@@ -63,6 +63,20 @@ func (_c *PostCreate) SetNillableSummary(v *string) *PostCreate {
 	return _c
 }
 
+// SetContent sets the "content" field.
+func (_c *PostCreate) SetContent(v string) *PostCreate {
+	_c.mutation.SetContent(v)
+	return _c
+}
+
+// SetNillableContent sets the "content" field if the given value is not nil.
+func (_c *PostCreate) SetNillableContent(v *string) *PostCreate {
+	if v != nil {
+		_c.SetContent(*v)
+	}
+	return _c
+}
+
 // SetCoverImage sets the "cover_image" field.
 func (_c *PostCreate) SetCoverImage(v string) *PostCreate {
 	_c.mutation.SetCoverImage(v)
@@ -524,6 +538,10 @@ func (_c *PostCreate) createSpec() (*Post, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.Summary(); ok {
 		_spec.SetField(post.FieldSummary, field.TypeString, value)
 		_node.Summary = value
+	}
+	if value, ok := _c.mutation.Content(); ok {
+		_spec.SetField(post.FieldContent, field.TypeString, value)
+		_node.Content = value
 	}
 	if value, ok := _c.mutation.CoverImage(); ok {
 		_spec.SetField(post.FieldCoverImage, field.TypeString, value)

@@ -81,6 +81,11 @@ func Summary(v string) predicate.Post {
 	return predicate.Post(sql.FieldEQ(FieldSummary, v))
 }
 
+// Content applies equality check predicate on the "content" field. It's identical to ContentEQ.
+func Content(v string) predicate.Post {
+	return predicate.Post(sql.FieldEQ(FieldContent, v))
+}
+
 // CoverImage applies equality check predicate on the "cover_image" field. It's identical to CoverImageEQ.
 func CoverImage(v string) predicate.Post {
 	return predicate.Post(sql.FieldEQ(FieldCoverImage, v))
@@ -389,6 +394,81 @@ func SummaryEqualFold(v string) predicate.Post {
 // SummaryContainsFold applies the ContainsFold predicate on the "summary" field.
 func SummaryContainsFold(v string) predicate.Post {
 	return predicate.Post(sql.FieldContainsFold(FieldSummary, v))
+}
+
+// ContentEQ applies the EQ predicate on the "content" field.
+func ContentEQ(v string) predicate.Post {
+	return predicate.Post(sql.FieldEQ(FieldContent, v))
+}
+
+// ContentNEQ applies the NEQ predicate on the "content" field.
+func ContentNEQ(v string) predicate.Post {
+	return predicate.Post(sql.FieldNEQ(FieldContent, v))
+}
+
+// ContentIn applies the In predicate on the "content" field.
+func ContentIn(vs ...string) predicate.Post {
+	return predicate.Post(sql.FieldIn(FieldContent, vs...))
+}
+
+// ContentNotIn applies the NotIn predicate on the "content" field.
+func ContentNotIn(vs ...string) predicate.Post {
+	return predicate.Post(sql.FieldNotIn(FieldContent, vs...))
+}
+
+// ContentGT applies the GT predicate on the "content" field.
+func ContentGT(v string) predicate.Post {
+	return predicate.Post(sql.FieldGT(FieldContent, v))
+}
+
+// ContentGTE applies the GTE predicate on the "content" field.
+func ContentGTE(v string) predicate.Post {
+	return predicate.Post(sql.FieldGTE(FieldContent, v))
+}
+
+// ContentLT applies the LT predicate on the "content" field.
+func ContentLT(v string) predicate.Post {
+	return predicate.Post(sql.FieldLT(FieldContent, v))
+}
+
+// ContentLTE applies the LTE predicate on the "content" field.
+func ContentLTE(v string) predicate.Post {
+	return predicate.Post(sql.FieldLTE(FieldContent, v))
+}
+
+// ContentContains applies the Contains predicate on the "content" field.
+func ContentContains(v string) predicate.Post {
+	return predicate.Post(sql.FieldContains(FieldContent, v))
+}
+
+// ContentHasPrefix applies the HasPrefix predicate on the "content" field.
+func ContentHasPrefix(v string) predicate.Post {
+	return predicate.Post(sql.FieldHasPrefix(FieldContent, v))
+}
+
+// ContentHasSuffix applies the HasSuffix predicate on the "content" field.
+func ContentHasSuffix(v string) predicate.Post {
+	return predicate.Post(sql.FieldHasSuffix(FieldContent, v))
+}
+
+// ContentIsNil applies the IsNil predicate on the "content" field.
+func ContentIsNil() predicate.Post {
+	return predicate.Post(sql.FieldIsNull(FieldContent))
+}
+
+// ContentNotNil applies the NotNil predicate on the "content" field.
+func ContentNotNil() predicate.Post {
+	return predicate.Post(sql.FieldNotNull(FieldContent))
+}
+
+// ContentEqualFold applies the EqualFold predicate on the "content" field.
+func ContentEqualFold(v string) predicate.Post {
+	return predicate.Post(sql.FieldEqualFold(FieldContent, v))
+}
+
+// ContentContainsFold applies the ContainsFold predicate on the "content" field.
+func ContentContainsFold(v string) predicate.Post {
+	return predicate.Post(sql.FieldContainsFold(FieldContent, v))
 }
 
 // CoverImageEQ applies the EQ predicate on the "cover_image" field.

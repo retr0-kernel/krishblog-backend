@@ -46,6 +46,10 @@ func (Post) Fields() []ent.Field {
 			MaxLen(500).
 			Comment("Short excerpt shown in listing views"),
 
+		field.Text("content").
+			Optional().
+			Comment("Full markdown body of the post"),
+
 		field.String("cover_image").
 			Optional().
 			Nillable().

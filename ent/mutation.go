@@ -2650,6 +2650,7 @@ type PostMutation struct {
 	title                   *string
 	slug                    *string
 	summary                 *string
+	content                 *string
 	cover_image             *string
 	cover_image_alt         *string
 	status                  *post.Status
@@ -2977,6 +2978,55 @@ func (m *PostMutation) SummaryCleared() bool {
 func (m *PostMutation) ResetSummary() {
 	m.summary = nil
 	delete(m.clearedFields, post.FieldSummary)
+}
+
+// SetContent sets the "content" field.
+func (m *PostMutation) SetContent(s string) {
+	m.content = &s
+}
+
+// Content returns the value of the "content" field in the mutation.
+func (m *PostMutation) Content() (r string, exists bool) {
+	v := m.content
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldContent returns the old "content" field's value of the Post entity.
+// If the Post object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *PostMutation) OldContent(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldContent is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldContent requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldContent: %w", err)
+	}
+	return oldValue.Content, nil
+}
+
+// ClearContent clears the value of the "content" field.
+func (m *PostMutation) ClearContent() {
+	m.content = nil
+	m.clearedFields[post.FieldContent] = struct{}{}
+}
+
+// ContentCleared returns if the "content" field was cleared in this mutation.
+func (m *PostMutation) ContentCleared() bool {
+	_, ok := m.clearedFields[post.FieldContent]
+	return ok
+}
+
+// ResetContent resets all changes to the "content" field.
+func (m *PostMutation) ResetContent() {
+	m.content = nil
+	delete(m.clearedFields, post.FieldContent)
 }
 
 // SetCoverImage sets the "cover_image" field.
@@ -3810,7 +3860,7 @@ func (m *PostMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *PostMutation) Fields() []string {
-	fields := make([]string, 0, 19)
+	fields := make([]string, 0, 20)
 	if m.section != nil {
 		fields = append(fields, post.FieldSectionID)
 	}
@@ -3825,6 +3875,9 @@ func (m *PostMutation) Fields() []string {
 	}
 	if m.summary != nil {
 		fields = append(fields, post.FieldSummary)
+	}
+	if m.content != nil {
+		fields = append(fields, post.FieldContent)
 	}
 	if m.cover_image != nil {
 		fields = append(fields, post.FieldCoverImage)
@@ -3886,6 +3939,8 @@ func (m *PostMutation) Field(name string) (ent.Value, bool) {
 		return m.Slug()
 	case post.FieldSummary:
 		return m.Summary()
+	case post.FieldContent:
+		return m.Content()
 	case post.FieldCoverImage:
 		return m.CoverImage()
 	case post.FieldCoverImageAlt:
@@ -3933,6 +3988,8 @@ func (m *PostMutation) OldField(ctx context.Context, name string) (ent.Value, er
 		return m.OldSlug(ctx)
 	case post.FieldSummary:
 		return m.OldSummary(ctx)
+	case post.FieldContent:
+		return m.OldContent(ctx)
 	case post.FieldCoverImage:
 		return m.OldCoverImage(ctx)
 	case post.FieldCoverImageAlt:
@@ -4004,6 +4061,13 @@ func (m *PostMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetSummary(v)
+		return nil
+	case post.FieldContent:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetContent(v)
 		return nil
 	case post.FieldCoverImage:
 		v, ok := value.(string)
@@ -4163,6 +4227,9 @@ func (m *PostMutation) ClearedFields() []string {
 	if m.FieldCleared(post.FieldSummary) {
 		fields = append(fields, post.FieldSummary)
 	}
+	if m.FieldCleared(post.FieldContent) {
+		fields = append(fields, post.FieldContent)
+	}
 	if m.FieldCleared(post.FieldCoverImage) {
 		fields = append(fields, post.FieldCoverImage)
 	}
@@ -4200,6 +4267,9 @@ func (m *PostMutation) ClearField(name string) error {
 	switch name {
 	case post.FieldSummary:
 		m.ClearSummary()
+		return nil
+	case post.FieldContent:
+		m.ClearContent()
 		return nil
 	case post.FieldCoverImage:
 		m.ClearCoverImage()
@@ -4244,6 +4314,9 @@ func (m *PostMutation) ResetField(name string) error {
 		return nil
 	case post.FieldSummary:
 		m.ResetSummary()
+		return nil
+	case post.FieldContent:
+		m.ResetContent()
 		return nil
 	case post.FieldCoverImage:
 		m.ResetCoverImage()

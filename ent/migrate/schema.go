@@ -146,6 +146,7 @@ var (
 		{Name: "title", Type: field.TypeString, Size: 300},
 		{Name: "slug", Type: field.TypeString, Unique: true, Size: 300},
 		{Name: "summary", Type: field.TypeString, Nullable: true, Size: 500},
+		{Name: "content", Type: field.TypeString, Nullable: true, Size: 2147483647},
 		{Name: "cover_image", Type: field.TypeString, Nullable: true, Size: 2048},
 		{Name: "cover_image_alt", Type: field.TypeString, Nullable: true, Size: 300},
 		{Name: "status", Type: field.TypeEnum, Enums: []string{"draft", "scheduled", "published", "archived"}, Default: "draft"},
@@ -171,13 +172,13 @@ var (
 		ForeignKeys: []*schema.ForeignKey{
 			{
 				Symbol:     "posts_sections_posts",
-				Columns:    []*schema.Column{PostsColumns[18]},
+				Columns:    []*schema.Column{PostsColumns[19]},
 				RefColumns: []*schema.Column{SectionsColumns[0]},
 				OnDelete:   schema.NoAction,
 			},
 			{
 				Symbol:     "posts_users_posts",
-				Columns:    []*schema.Column{PostsColumns[19]},
+				Columns:    []*schema.Column{PostsColumns[20]},
 				RefColumns: []*schema.Column{UsersColumns[0]},
 				OnDelete:   schema.NoAction,
 			},
@@ -191,47 +192,47 @@ var (
 			{
 				Name:    "post_section_id",
 				Unique:  false,
-				Columns: []*schema.Column{PostsColumns[18]},
+				Columns: []*schema.Column{PostsColumns[19]},
 			},
 			{
 				Name:    "post_author_id",
 				Unique:  false,
-				Columns: []*schema.Column{PostsColumns[19]},
+				Columns: []*schema.Column{PostsColumns[20]},
 			},
 			{
 				Name:    "post_status",
 				Unique:  false,
-				Columns: []*schema.Column{PostsColumns[6]},
+				Columns: []*schema.Column{PostsColumns[7]},
 			},
 			{
 				Name:    "post_published",
 				Unique:  false,
-				Columns: []*schema.Column{PostsColumns[7]},
+				Columns: []*schema.Column{PostsColumns[8]},
 			},
 			{
 				Name:    "post_is_featured",
 				Unique:  false,
-				Columns: []*schema.Column{PostsColumns[10]},
+				Columns: []*schema.Column{PostsColumns[11]},
 			},
 			{
 				Name:    "post_published_at",
 				Unique:  false,
-				Columns: []*schema.Column{PostsColumns[14]},
+				Columns: []*schema.Column{PostsColumns[15]},
 			},
 			{
 				Name:    "post_scheduled_at",
 				Unique:  false,
-				Columns: []*schema.Column{PostsColumns[15]},
+				Columns: []*schema.Column{PostsColumns[16]},
 			},
 			{
 				Name:    "post_status_published_at",
 				Unique:  false,
-				Columns: []*schema.Column{PostsColumns[6], PostsColumns[14]},
+				Columns: []*schema.Column{PostsColumns[7], PostsColumns[15]},
 			},
 			{
 				Name:    "post_section_id_status",
 				Unique:  false,
-				Columns: []*schema.Column{PostsColumns[18], PostsColumns[6]},
+				Columns: []*schema.Column{PostsColumns[19], PostsColumns[7]},
 			},
 		},
 	}

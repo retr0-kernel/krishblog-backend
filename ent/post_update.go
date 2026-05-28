@@ -109,6 +109,26 @@ func (_u *PostUpdate) ClearSummary() *PostUpdate {
 	return _u
 }
 
+// SetContent sets the "content" field.
+func (_u *PostUpdate) SetContent(v string) *PostUpdate {
+	_u.mutation.SetContent(v)
+	return _u
+}
+
+// SetNillableContent sets the "content" field if the given value is not nil.
+func (_u *PostUpdate) SetNillableContent(v *string) *PostUpdate {
+	if v != nil {
+		_u.SetContent(*v)
+	}
+	return _u
+}
+
+// ClearContent clears the value of the "content" field.
+func (_u *PostUpdate) ClearContent() *PostUpdate {
+	_u.mutation.ClearContent()
+	return _u
+}
+
 // SetCoverImage sets the "cover_image" field.
 func (_u *PostUpdate) SetCoverImage(v string) *PostUpdate {
 	_u.mutation.SetCoverImage(v)
@@ -564,6 +584,12 @@ func (_u *PostUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	if _u.mutation.SummaryCleared() {
 		_spec.ClearField(post.FieldSummary, field.TypeString)
 	}
+	if value, ok := _u.mutation.Content(); ok {
+		_spec.SetField(post.FieldContent, field.TypeString, value)
+	}
+	if _u.mutation.ContentCleared() {
+		_spec.ClearField(post.FieldContent, field.TypeString)
+	}
 	if value, ok := _u.mutation.CoverImage(); ok {
 		_spec.SetField(post.FieldCoverImage, field.TypeString, value)
 	}
@@ -871,6 +897,26 @@ func (_u *PostUpdateOne) SetNillableSummary(v *string) *PostUpdateOne {
 // ClearSummary clears the value of the "summary" field.
 func (_u *PostUpdateOne) ClearSummary() *PostUpdateOne {
 	_u.mutation.ClearSummary()
+	return _u
+}
+
+// SetContent sets the "content" field.
+func (_u *PostUpdateOne) SetContent(v string) *PostUpdateOne {
+	_u.mutation.SetContent(v)
+	return _u
+}
+
+// SetNillableContent sets the "content" field if the given value is not nil.
+func (_u *PostUpdateOne) SetNillableContent(v *string) *PostUpdateOne {
+	if v != nil {
+		_u.SetContent(*v)
+	}
+	return _u
+}
+
+// ClearContent clears the value of the "content" field.
+func (_u *PostUpdateOne) ClearContent() *PostUpdateOne {
+	_u.mutation.ClearContent()
 	return _u
 }
 
@@ -1358,6 +1404,12 @@ func (_u *PostUpdateOne) sqlSave(ctx context.Context) (_node *Post, err error) {
 	}
 	if _u.mutation.SummaryCleared() {
 		_spec.ClearField(post.FieldSummary, field.TypeString)
+	}
+	if value, ok := _u.mutation.Content(); ok {
+		_spec.SetField(post.FieldContent, field.TypeString, value)
+	}
+	if _u.mutation.ContentCleared() {
+		_spec.ClearField(post.FieldContent, field.TypeString)
 	}
 	if value, ok := _u.mutation.CoverImage(); ok {
 		_spec.SetField(post.FieldCoverImage, field.TypeString, value)

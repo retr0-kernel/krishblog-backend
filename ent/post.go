@@ -30,6 +30,8 @@ type Post struct {
 	Slug string `json:"slug,omitempty"`
 	// Short excerpt shown in listing views
 	Summary string `json:"summary,omitempty"`
+	// Full markdown body of the post
+	Content string `json:"content,omitempty"`
 	// R2 URL for hero image
 	CoverImage *string `json:"cover_image,omitempty"`
 	// Alt text for cover image
@@ -128,7 +130,7 @@ func (*Post) scanValues(columns []string) ([]any, error) {
 			values[i] = new(sql.NullBool)
 		case post.FieldReadTime, post.FieldWordCount:
 			values[i] = new(sql.NullInt64)
-		case post.FieldTitle, post.FieldSlug, post.FieldSummary, post.FieldCoverImage, post.FieldCoverImageAlt, post.FieldStatus, post.FieldMetaTitle, post.FieldMetaDesc, post.FieldOgImage:
+		case post.FieldTitle, post.FieldSlug, post.FieldSummary, post.FieldContent, post.FieldCoverImage, post.FieldCoverImageAlt, post.FieldStatus, post.FieldMetaTitle, post.FieldMetaDesc, post.FieldOgImage:
 			values[i] = new(sql.NullString)
 		case post.FieldPublishedAt, post.FieldScheduledAt, post.FieldCreatedAt, post.FieldUpdatedAt:
 			values[i] = new(sql.NullTime)
@@ -184,6 +186,12 @@ func (_m *Post) assignValues(columns []string, values []any) error {
 				return fmt.Errorf("unexpected type %T for field summary", values[i])
 			} else if value.Valid {
 				_m.Summary = value.String
+			}
+		case post.FieldContent:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field content", values[i])
+			} else if value.Valid {
+				_m.Content = value.String
 			}
 		case post.FieldCoverImage:
 			if value, ok := values[i].(*sql.NullString); !ok {
@@ -343,6 +351,9 @@ func (_m *Post) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("summary=")
 	builder.WriteString(_m.Summary)
+	builder.WriteString(", ")
+	builder.WriteString("content=")
+	builder.WriteString(_m.Content)
 	builder.WriteString(", ")
 	if v := _m.CoverImage; v != nil {
 		builder.WriteString("cover_image=")

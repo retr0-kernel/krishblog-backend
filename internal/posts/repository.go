@@ -40,11 +40,11 @@ func (r *Repository) ListPublished(ctx context.Context, section, tag, query stri
 	}
 	if query != "" {
 		where = append(where, fmt.Sprintf(
-			"(p.search_vector @@ plainto_tsquery('english',$%d) OR p.title ILIKE $%d OR p.excerpt ILIKE $%d)",
+			"(p.title ILIKE $%d OR p.summary ILIKE $%d OR p.slug ILIKE $%d)",
 			i, i+1, i+2,
 		))
 		like := "%" + query + "%"
-		args = append(args, query, like, like)
+		args = append(args, like, like, like)
 		i += 3
 	}
 
@@ -59,26 +59,17 @@ func (r *Repository) ListPublished(ctx context.Context, section, tag, query stri
 		return nil, 0, fmt.Errorf("count posts: %w", err)
 	}
 
-	orderBy := "p.published_at DESC"
-	if query != "" {
-		orderBy = fmt.Sprintf(
-			"ts_rank(p.search_vector, plainto_tsquery('english',$%d)) DESC, p.published_at DESC", i,
-		)
-		args = append(args, query)
-		i++
-	}
-
 	args = append(args, p.Limit, p.Offset)
 	listQ := fmt.Sprintf(`
 		SELECT p.id, p.section_id, COALESCE(s.slug,''), p.author_id, p.title, p.slug,
-		       COALESCE(p.excerpt,''), COALESCE(p.cover_image,''), COALESCE(p.cover_image_alt,''),
-		       p.status, p.is_featured, p.reading_time_min, p.word_count,
+		       COALESCE(p.summary,''), COALESCE(p.cover_image,''), COALESCE(p.cover_image_alt,''),
+		       p.status, p.is_featured, p.read_time, p.word_count,
 		       p.published_at, p.created_at, p.updated_at
 		FROM posts p
 		LEFT JOIN sections s ON s.id = p.section_id
 		%s
-		ORDER BY %s
-		LIMIT $%d OFFSET $%d`, whereClause, orderBy, i, i+1)
+		ORDER BY p.published_at DESC
+		LIMIT $%d OFFSET $%d`, whereClause, i, i+1)
 
 	posts, err := r.scanList(ctx, listQ, args...)
 	return posts, total, err
@@ -87,8 +78,8 @@ func (r *Repository) ListPublished(ctx context.Context, section, tag, query stri
 func (r *Repository) GetBySlug(ctx context.Context, slugStr string) (*PostResponse, error) {
 	const q = `
 		SELECT p.id, p.section_id, COALESCE(s.slug,''), p.author_id, p.title, p.slug,
-		       COALESCE(p.excerpt,''), COALESCE(p.cover_image,''), COALESCE(p.cover_image_alt,''),
-		       p.status, p.is_featured, p.reading_time_min, p.word_count,
+		       COALESCE(p.summary,''), COALESCE(p.cover_image,''), COALESCE(p.cover_image_alt,''),
+		       p.status, p.is_featured, p.read_time, p.word_count,
 		       p.published_at, p.created_at, p.updated_at,
 		       COALESCE(p.content,''), COALESCE(p.meta_title,''), COALESCE(p.meta_desc,'')
 		FROM posts p
@@ -129,8 +120,8 @@ func (r *Repository) AdminList(ctx context.Context, status, section string, p pa
 	args = append(args, p.Limit, p.Offset)
 	listQ := fmt.Sprintf(`
 		SELECT p.id, p.section_id, COALESCE(s.slug,''), p.author_id, p.title, p.slug,
-		       COALESCE(p.excerpt,''), COALESCE(p.cover_image,''), COALESCE(p.cover_image_alt,''),
-		       p.status, p.is_featured, p.reading_time_min, p.word_count,
+		       COALESCE(p.summary,''), COALESCE(p.cover_image,''), COALESCE(p.cover_image_alt,''),
+		       p.status, p.is_featured, p.read_time, p.word_count,
 		       p.published_at, p.created_at, p.updated_at
 		FROM posts p
 		LEFT JOIN sections s ON s.id = p.section_id
@@ -161,16 +152,16 @@ func (r *Repository) Create(ctx context.Context, authorID string, req CreateRequ
 
 	const q = `
         INSERT INTO posts (
-            section_id, author_id, title, slug, excerpt, content,
+            section_id, author_id, title, slug, summary, content,
             cover_image, cover_image_alt, status, is_featured,
-            reading_time_min, word_count, meta_title, meta_desc,
+            read_time, word_count, meta_title, meta_desc,
             scheduled_at, published_at, created_at, updated_at
         ) VALUES (
             $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,NOW(),NOW()
         )
         RETURNING id, section_id, ''::text, author_id, title, slug,
-                  COALESCE(excerpt,''), COALESCE(cover_image,''), COALESCE(cover_image_alt,''),
-                  status, is_featured, reading_time_min, word_count,
+                  COALESCE(summary,''), COALESCE(cover_image,''), COALESCE(cover_image_alt,''),
+                  status, is_featured, read_time, word_count,
                   published_at, created_at, updated_at,
                   COALESCE(content,''), COALESCE(meta_title,''), COALESCE(meta_desc,'')`
 
@@ -206,15 +197,15 @@ func (r *Repository) Update(ctx context.Context, id string, req UpdateRequest) (
 
 	const q = `
         UPDATE posts SET
-            section_id=$1, title=$2, slug=$3, excerpt=$4, content=$5,
+            section_id=$1, title=$2, slug=$3, summary=$4, content=$5,
             cover_image=$6, cover_image_alt=$7, is_featured=$8,
-            reading_time_min=$9, word_count=$10,
+            read_time=$9, word_count=$10,
             meta_title=$11, meta_desc=$12, scheduled_at=$13,
             updated_at=NOW()
         WHERE id=$14
         RETURNING id, section_id, ''::text, author_id, title, slug,
-                  COALESCE(excerpt,''), COALESCE(cover_image,''), COALESCE(cover_image_alt,''),
-                  status, is_featured, reading_time_min, word_count,
+                  COALESCE(summary,''), COALESCE(cover_image,''), COALESCE(cover_image_alt,''),
+                  status, is_featured, read_time, word_count,
                   published_at, created_at, updated_at,
                   COALESCE(content,''), COALESCE(meta_title,''), COALESCE(meta_desc,'')`
 
@@ -234,8 +225,8 @@ func (r *Repository) UpdateStatus(ctx context.Context, id string, status PostSta
 		UPDATE posts SET status=$1, updated_at=NOW()%s
 		WHERE id=$2
 		RETURNING id, section_id, ''::text, author_id, title, slug,
-		          COALESCE(excerpt,''), COALESCE(cover_image,''), COALESCE(cover_image_alt,''),
-		          status, is_featured, reading_time_min, word_count,
+		          COALESCE(summary,''), COALESCE(cover_image,''), COALESCE(cover_image_alt,''),
+		          status, is_featured, read_time, word_count,
 		          published_at, created_at, updated_at,
 		          COALESCE(content,''), COALESCE(meta_title,''), COALESCE(meta_desc,'')`,
 		publishedClause)
@@ -251,14 +242,27 @@ func (r *Repository) Delete(ctx context.Context, id string) error {
 func (r *Repository) GetByID(ctx context.Context, id string) (*PostResponse, error) {
 	const q = `
 		SELECT p.id, p.section_id, COALESCE(s.slug,''), p.author_id, p.title, p.slug,
-		       COALESCE(p.excerpt,''), COALESCE(p.cover_image,''), COALESCE(p.cover_image_alt,''),
-		       p.status, p.is_featured, p.reading_time_min, p.word_count,
+		       COALESCE(p.summary,''), COALESCE(p.cover_image,''), COALESCE(p.cover_image_alt,''),
+		       p.status, p.is_featured, p.read_time, p.word_count,
 		       p.published_at, p.created_at, p.updated_at,
 		       COALESCE(p.content,''), COALESCE(p.meta_title,''), COALESCE(p.meta_desc,'')
 		FROM posts p
 		LEFT JOIN sections s ON s.id = p.section_id
 		WHERE p.id=$1`
 	return r.scanOne(ctx, q, id)
+}
+
+func (r *Repository) AdminGetBySlug(ctx context.Context, slug string) (*PostResponse, error) {
+	const q = `
+        SELECT p.id, p.section_id, COALESCE(s.slug,''), p.author_id, p.title, p.slug,
+               COALESCE(p.summary,''), COALESCE(p.cover_image,''), COALESCE(p.cover_image_alt,''),
+               p.status, p.is_featured, p.read_time, p.word_count,
+               p.published_at, p.created_at, p.updated_at,
+               COALESCE(p.content,''), COALESCE(p.meta_title,''), COALESCE(p.meta_desc,'')
+        FROM posts p
+        LEFT JOIN sections s ON s.id = p.section_id
+        WHERE p.slug = $1`
+	return r.scanOne(ctx, q, slug)
 }
 
 // ─── scan helpers ─────────────────────────────────────────────────────────────
@@ -337,15 +341,3 @@ func makeSlug(title string) string {
 	return strings.Trim(b.String(), "-")
 }
 
-func (r *Repository) AdminGetBySlug(ctx context.Context, slug string) (*PostResponse, error) {
-	const q = `
-        SELECT p.id, p.section_id, COALESCE(s.slug,''), p.author_id, p.title, p.slug,
-               COALESCE(p.excerpt,''), COALESCE(p.cover_image,''), COALESCE(p.cover_image_alt,''),
-               p.status, p.is_featured, p.reading_time_min, p.word_count,
-               p.published_at, p.created_at, p.updated_at,
-               COALESCE(p.content,''), COALESCE(p.meta_title,''), COALESCE(p.meta_desc,'')
-        FROM posts p
-        LEFT JOIN sections s ON s.id = p.section_id
-        WHERE p.slug = $1`
-	return r.scanOne(ctx, q, slug)
-}

@@ -26,6 +26,8 @@ const (
 	FieldSlug = "slug"
 	// FieldSummary holds the string denoting the summary field in the database.
 	FieldSummary = "summary"
+	// FieldContent holds the string denoting the content field in the database.
+	FieldContent = "content"
 	// FieldCoverImage holds the string denoting the cover_image field in the database.
 	FieldCoverImage = "cover_image"
 	// FieldCoverImageAlt holds the string denoting the cover_image_alt field in the database.
@@ -102,6 +104,7 @@ var Columns = []string{
 	FieldTitle,
 	FieldSlug,
 	FieldSummary,
+	FieldContent,
 	FieldCoverImage,
 	FieldCoverImageAlt,
 	FieldStatus,
@@ -226,6 +229,11 @@ func BySlug(opts ...sql.OrderTermOption) OrderOption {
 // BySummary orders the results by the summary field.
 func BySummary(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldSummary, opts...).ToFunc()
+}
+
+// ByContent orders the results by the content field.
+func ByContent(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldContent, opts...).ToFunc()
 }
 
 // ByCoverImage orders the results by the cover_image field.
