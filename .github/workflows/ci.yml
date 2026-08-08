@@ -1,0 +1,69 @@
+name: Backend CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: backend-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Generate Ent code
+        run: go run entgo.io/ent/cmd/ent@latest generate ./ent/schema
+
+      - name: Vet
+        run: go vet ./...
+
+      - name: Test
+        run: go test ./...
+
+      - name: Build
+        run: |
+          go build -o /dev/null ./cmd/server
+          go build -o /dev/null ./cmd/migrate
+
+  migrate:
+    needs: test
+    if: >-
+      github.ref == 'refs/heads/main' &&
+      github.event_name == 'push' &&
+      needs.test.result == 'success'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: dorny/paths-filter@v3
+        id: changes
+        with:
+          filters: |
+            migrations:
+              - 'internal/database/**'
+              - 'internal/analytics/repository.go'
+              - 'ent/schema/**'
+              - 'cmd/migrate/**'
+
+      - uses: actions/setup-go@v5
+        if: steps.changes.outputs.migrations == 'true'
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Run migrations
+        if: steps.changes.outputs.migrations == 'true'
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: go run ./cmd/migrate
