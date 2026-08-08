@@ -15,7 +15,6 @@ import (
 	"krishblog/internal/api"
 	"krishblog/internal/api/health"
 	"krishblog/internal/auth"
-	"krishblog/internal/claps"
 	"krishblog/internal/comments"
 	"krishblog/internal/config"
 	"krishblog/internal/database"
@@ -57,6 +56,12 @@ func main() {
 
 	if err := database.RunCustomMigrations(context.Background(), pg); err != nil {
 		log.Error("custom migrations failed", "error", err)
+		os.Exit(1)
+	}
+
+	analyticsRepo := analytics.NewRepository(pg)
+	if err := analyticsRepo.ApplySchemaPatches(context.Background()); err != nil {
+		log.Error("analytics schema patches failed", "error", err)
 		os.Exit(1)
 	}
 
@@ -103,7 +108,6 @@ func main() {
 	}, log)
 
 	commentsSvc := comments.NewService(pg)
-	clapsSvc := claps.NewService(pg)
 
 	// ── Handlers ──────────────────────────────────────────────────────────────
 	handlers := api.Handlers{
@@ -120,7 +124,6 @@ func main() {
 		Media:       media.NewHandler(mediaSvc),
 		Subscribers: subscribers.NewHandler(subSvc),
 		Comments:    comments.NewHandler(commentsSvc),
-		Claps:       claps.NewHandler(clapsSvc),
 	}
 
 	// ── Analytics background processor ────────────────────────────────────────

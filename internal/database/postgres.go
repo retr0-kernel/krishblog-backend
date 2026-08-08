@@ -6,7 +6,8 @@ import (
 	"fmt"
 	"time"
 
-	_ "github.com/lib/pq"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/stdlib"
 )
 
 type Postgres struct {
@@ -14,10 +15,15 @@ type Postgres struct {
 }
 
 func NewPostgres(databaseURL string) (*Postgres, error) {
-	db, err := sql.Open("postgres", databaseURL)
+	cfg, err := pgx.ParseConfig(databaseURL)
 	if err != nil {
-		return nil, fmt.Errorf("open postgres: %w", err)
+		return nil, fmt.Errorf("parse postgres config: %w", err)
 	}
+	// Required for Neon PgBouncer (transaction pooler) — avoids
+	// "unnamed prepared statement does not exist" and bad LIMIT bindings.
+	cfg.DefaultQueryExecMode = pgx.QueryExecModeSimpleProtocol
+
+	db := stdlib.OpenDB(*cfg)
 
 	db.SetMaxOpenConns(25)
 	db.SetMaxIdleConns(10)

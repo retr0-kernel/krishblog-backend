@@ -44,7 +44,7 @@ func main() {
 		log.Fatalf("migration failed: %v", err)
 	}
 
-	log.Println("running custom migrations (comments, claps)...")
+	log.Println("running custom migrations (comments)...")
 	if err := database.RunCustomMigrations(ctx, pg); err != nil {
 		log.Fatalf("custom migration failed: %v", err)
 	}

@@ -9,6 +9,11 @@ import (
 	"krishblog/internal/database"
 )
 
+const (
+	eventTimeExpr  = "COALESCE(recorded_at, timestamp)"
+	viewEventsExpr = "event_type IN ('page_view', 'post_view')"
+)
+
 // Repository handles all analytics database operations.
 // Writes are called by the async processor; reads serve the admin API.
 type Repository struct {
@@ -17,6 +22,16 @@ type Repository struct {
 
 func NewRepository(db *database.Postgres) *Repository {
 	return &Repository{db: db}
+}
+
+func safeLimit(n int) int {
+	if n <= 0 {
+		return 10
+	}
+	if n > 100 {
+		return 100
+	}
+	return n
 }
 
 // ApplySchemaPatches adds analytics-specific columns that Ent doesn't manage.
@@ -51,50 +66,56 @@ func (r *Repository) InsertEvent(ctx context.Context, e enrichedEvent) error {
 		meta = []byte("{}")
 	}
 
+	recordedAt := e.RecordedAt
+	if recordedAt.IsZero() {
+		recordedAt = time.Now().UTC()
+	}
+
+	device := e.Device
+	if device == "" {
+		device = "unknown"
+	}
+
 	_, err := r.db.DB.ExecContext(ctx, `
 		INSERT INTO analytics_events (
-			event_type, session_id,
-			post_id,
-			path, referrer,
-			scroll_pct, duration_ms,
-			ip_hash, country, device, browser, os,
-			metadata, recorded_at
+			id, event_type, session_id, post_id, path, referrer,
+			scroll_pct, duration_ms, ip_hash, country, device, browser, os,
+			metadata, timestamp, recorded_at
 		) VALUES (
-			$1,  $2,
-			NULLIF($3, '')::uuid,
-			$4,  $5,
-			$6,  $7,
-			$8,  $9, $10, $11, $12,
-			$13, $14
+			gen_random_uuid(),
+			$1, $2, NULLIF($3, '')::uuid, $4, $5, $6, $7,
+			$8, $9, $10, $11, $12, $13, $14, $14
 		)`,
-		e.Type, e.SessionID,
-		e.PostID,
+		e.Type, e.SessionID, e.PostID,
 		e.Path, e.Referrer,
 		e.ScrollPct, e.DurationMs,
-		e.IPHash, e.Country, e.Device, e.Browser, e.OS,
-		string(meta), e.RecordedAt,
+		e.IPHash, e.Country, device, e.Browser, e.OS,
+		string(meta), recordedAt,
 	)
 	return err
 }
 
-// ── Admin read queries ────────────────────────────────────────────────────────
-
-// Overview returns aggregated site-wide analytics for the last N days.
 // Overview returns aggregated site-wide analytics for the last N days.
 func (r *Repository) Overview(ctx context.Context, days int) (*OverviewResponse, error) {
 	since := time.Now().UTC().AddDate(0, 0, -days)
-	resp := &OverviewResponse{Period: fmt.Sprintf("last_%d_days", days)}
+	resp := &OverviewResponse{
+		Period:           fmt.Sprintf("last_%d_days", days),
+		TopPosts:         []PostStat{},
+		TopReferrers:     []ReferrerStat{},
+		DeviceBreakdown:  []DeviceStat{},
+		CountryBreakdown: []CountryStat{},
+		DailyViews:       []DailyStat{},
+	}
 
-	// Use CASE WHEN instead of FILTER for broader compatibility
-	row := r.db.DB.QueryRowContext(ctx, `
+	row := r.db.DB.QueryRowContext(ctx, fmt.Sprintf(`
 		SELECT
-			COUNT(CASE WHEN event_type = 'page_view' THEN 1 END),
-			COUNT(DISTINCT CASE WHEN event_type = 'page_view' THEN ip_hash END),
+			COUNT(CASE WHEN %s THEN 1 END),
+			COUNT(DISTINCT CASE WHEN %s THEN NULLIF(ip_hash, '') END),
 			COALESCE(AVG(CASE WHEN event_type = 'scroll_depth' THEN scroll_pct::float END), 0),
 			COALESCE(AVG(CASE WHEN event_type = 'session_end'  THEN duration_ms::float END) / 1000.0, 0)
 		FROM analytics_events
-		WHERE recorded_at >= $1
-	`, since)
+		WHERE %s >= $1
+	`, viewEventsExpr, viewEventsExpr, eventTimeExpr), since)
 	if err := row.Scan(
 		&resp.TotalPageViews,
 		&resp.UniqueVisitors,
@@ -105,24 +126,19 @@ func (r *Repository) Overview(ctx context.Context, days int) (*OverviewResponse,
 	}
 
 	var err error
-	resp.TopPosts, err = r.topPosts(ctx, since, 10)
-	if err != nil {
+	if resp.TopPosts, err = r.topPosts(ctx, since, 10); err != nil {
 		return nil, err
 	}
-	resp.TopReferrers, err = r.topReferrers(ctx, since, 10)
-	if err != nil {
+	if resp.TopReferrers, err = r.topReferrers(ctx, since, 10); err != nil {
 		return nil, err
 	}
-	resp.DeviceBreakdown, err = r.deviceBreakdown(ctx, since, "")
-	if err != nil {
+	if resp.DeviceBreakdown, err = r.deviceBreakdown(ctx, since, ""); err != nil {
 		return nil, err
 	}
-	resp.CountryBreakdown, err = r.countryBreakdown(ctx, since, 10)
-	if err != nil {
+	if resp.CountryBreakdown, err = r.countryBreakdown(ctx, since, 10); err != nil {
 		return nil, err
 	}
-	resp.DailyViews, err = r.dailyViews(ctx, since, days, "")
-	if err != nil {
+	if resp.DailyViews, err = r.dailyViews(ctx, since, days, ""); err != nil {
 		return nil, err
 	}
 	return resp, nil
@@ -131,17 +147,21 @@ func (r *Repository) Overview(ctx context.Context, days int) (*OverviewResponse,
 // PostStats returns per-post analytics for the last N days.
 func (r *Repository) PostStats(ctx context.Context, postID string, days int) (*PostDetailResponse, error) {
 	since := time.Now().UTC().AddDate(0, 0, -days)
-	resp := &PostDetailResponse{PostID: postID}
+	resp := &PostDetailResponse{
+		PostID:          postID,
+		DailyViews:      []DailyStat{},
+		DeviceBreakdown: []DeviceStat{},
+	}
 
-	row := r.db.DB.QueryRowContext(ctx, `
+	row := r.db.DB.QueryRowContext(ctx, fmt.Sprintf(`
 		SELECT
 			COUNT(CASE WHEN event_type = 'post_view'     THEN 1 END),
-			COUNT(DISTINCT CASE WHEN event_type = 'post_view' THEN ip_hash END),
+			COUNT(DISTINCT CASE WHEN event_type = 'post_view' THEN NULLIF(ip_hash, '') END),
 			COALESCE(AVG(CASE WHEN event_type = 'scroll_depth' THEN scroll_pct::float END), 0),
 			COUNT(CASE WHEN event_type = 'read_complete' THEN 1 END)
 		FROM analytics_events
-		WHERE post_id::text = $1 AND recorded_at >= $2
-	`, postID, since)
+		WHERE post_id::text = $1 AND %s >= $2
+	`, eventTimeExpr), postID, since)
 	if err := row.Scan(
 		&resp.TotalViews,
 		&resp.UniqueVisitors,
@@ -159,12 +179,10 @@ func (r *Repository) PostStats(ctx context.Context, postID string, days int) (*P
 		Scan(&resp.PostTitle)
 
 	var err error
-	resp.DailyViews, err = r.dailyViews(ctx, since, days, postID)
-	if err != nil {
+	if resp.DailyViews, err = r.dailyViews(ctx, since, days, postID); err != nil {
 		return nil, err
 	}
-	resp.DeviceBreakdown, err = r.deviceBreakdown(ctx, since, postID)
-	if err != nil {
+	if resp.DeviceBreakdown, err = r.deviceBreakdown(ctx, since, postID); err != nil {
 		return nil, err
 	}
 	return resp, nil
@@ -173,29 +191,29 @@ func (r *Repository) PostStats(ctx context.Context, postID string, days int) (*P
 // ── sub-queries ───────────────────────────────────────────────────────────────
 
 func (r *Repository) topPosts(ctx context.Context, since time.Time, limit int) ([]PostStat, error) {
-	rows, err := r.db.DB.QueryContext(ctx, `
+	rows, err := r.db.DB.QueryContext(ctx, fmt.Sprintf(`
 		SELECT
 			ae.post_id::text,
 			COALESCE(p.title, 'Unknown'),
 			COALESCE(p.slug,  ''),
-			COUNT(*)                                                          AS views,
-			COUNT(DISTINCT ae.ip_hash)                                        AS unique_visitors,
+			COUNT(*) AS views,
+			COUNT(DISTINCT NULLIF(ae.ip_hash, '')) AS unique_visitors,
 			COALESCE(AVG(CASE WHEN ae.event_type = 'scroll_depth' THEN ae.scroll_pct::float END), 0) AS avg_scroll
 		FROM analytics_events ae
 		LEFT JOIN posts p ON p.id = ae.post_id
 		WHERE ae.event_type = 'post_view'
 		  AND ae.post_id IS NOT NULL
-		  AND ae.recorded_at >= $1
+		  AND %s >= $1
 		GROUP BY ae.post_id, p.title, p.slug
 		ORDER BY views DESC
-		LIMIT $2
-	`, since, limit)
+		LIMIT %d
+	`, eventTimeExpr, safeLimit(limit)), since)
 	if err != nil {
 		return nil, fmt.Errorf("top posts: %w", err)
 	}
 	defer rows.Close()
 
-	var out []PostStat
+	out := []PostStat{}
 	for rows.Next() {
 		var s PostStat
 		if err := rows.Scan(&s.PostID, &s.PostTitle, &s.PostSlug, &s.Views, &s.UniqueVisitors, &s.AvgScrollPct); err != nil {
@@ -207,22 +225,22 @@ func (r *Repository) topPosts(ctx context.Context, since time.Time, limit int) (
 }
 
 func (r *Repository) topReferrers(ctx context.Context, since time.Time, limit int) ([]ReferrerStat, error) {
-	rows, err := r.db.DB.QueryContext(ctx, `
+	rows, err := r.db.DB.QueryContext(ctx, fmt.Sprintf(`
 		SELECT
 			CASE WHEN referrer = '' OR referrer IS NULL THEN 'direct' ELSE referrer END AS ref,
 			COUNT(*) AS cnt
 		FROM analytics_events
-		WHERE event_type = 'page_view' AND recorded_at >= $1
-		GROUP BY ref
+		WHERE %s AND %s >= $1
+		GROUP BY 1
 		ORDER BY cnt DESC
-		LIMIT $2
-	`, since, limit)
+		LIMIT %d
+	`, viewEventsExpr, eventTimeExpr, safeLimit(limit)), since)
 	if err != nil {
 		return nil, fmt.Errorf("top referrers: %w", err)
 	}
 	defer rows.Close()
 
-	var out []ReferrerStat
+	out := []ReferrerStat{}
 	for rows.Next() {
 		var s ReferrerStat
 		if err := rows.Scan(&s.Referrer, &s.Count); err != nil {
@@ -234,37 +252,39 @@ func (r *Repository) topReferrers(ctx context.Context, since time.Time, limit in
 }
 
 func (r *Repository) deviceBreakdown(ctx context.Context, since time.Time, postID string) ([]DeviceStat, error) {
-	var rows interface {
-		Next() bool
-		Scan(...interface{}) error
-		Close() error
-		Err() error
-	}
-	var err error
+	var (
+		rows interface {
+			Next() bool
+			Scan(...interface{}) error
+			Close() error
+			Err() error
+		}
+		err error
+	)
 
 	if postID != "" {
-		rows, err = r.db.DB.QueryContext(ctx, `
+		rows, err = r.db.DB.QueryContext(ctx, fmt.Sprintf(`
 			SELECT device, COUNT(*) AS cnt
 			FROM analytics_events
 			WHERE event_type = 'post_view'
 			  AND post_id::text = $1
-			  AND recorded_at >= $2
+			  AND %s >= $2
 			GROUP BY device ORDER BY cnt DESC
-		`, postID, since)
+		`, eventTimeExpr), postID, since)
 	} else {
-		rows, err = r.db.DB.QueryContext(ctx, `
+		rows, err = r.db.DB.QueryContext(ctx, fmt.Sprintf(`
 			SELECT device, COUNT(*) AS cnt
 			FROM analytics_events
-			WHERE event_type = 'page_view' AND recorded_at >= $1
+			WHERE %s AND %s >= $1
 			GROUP BY device ORDER BY cnt DESC
-		`, since)
+		`, viewEventsExpr, eventTimeExpr), since)
 	}
 	if err != nil {
 		return nil, fmt.Errorf("device breakdown: %w", err)
 	}
 	defer rows.Close()
 
-	var out []DeviceStat
+	out := []DeviceStat{}
 	var total int64
 	for rows.Next() {
 		var s DeviceStat
@@ -286,20 +306,20 @@ func (r *Repository) deviceBreakdown(ctx context.Context, since time.Time, postI
 }
 
 func (r *Repository) countryBreakdown(ctx context.Context, since time.Time, limit int) ([]CountryStat, error) {
-	rows, err := r.db.DB.QueryContext(ctx, `
+	rows, err := r.db.DB.QueryContext(ctx, fmt.Sprintf(`
 		SELECT
 			CASE WHEN country = '' OR country IS NULL THEN 'Unknown' ELSE UPPER(country) END AS co,
 			COUNT(*) AS cnt
 		FROM analytics_events
-		WHERE event_type = 'page_view' AND recorded_at >= $1
-		GROUP BY co ORDER BY cnt DESC LIMIT $2
-	`, since, limit)
+		WHERE %s AND %s >= $1
+		GROUP BY 1 ORDER BY cnt DESC LIMIT %d
+	`, viewEventsExpr, eventTimeExpr, safeLimit(limit)), since)
 	if err != nil {
 		return nil, fmt.Errorf("country breakdown: %w", err)
 	}
 	defer rows.Close()
 
-	var out []CountryStat
+	out := []CountryStat{}
 	var total int64
 	for rows.Next() {
 		var s CountryStat
@@ -321,31 +341,32 @@ func (r *Repository) countryBreakdown(ctx context.Context, since time.Time, limi
 }
 
 func (r *Repository) dailyViews(ctx context.Context, since time.Time, days int, postID string) ([]DailyStat, error) {
+	limit := safeLimit(days)
 	var query string
 	var args []interface{}
 
 	if postID != "" {
-		query = `
+		query = fmt.Sprintf(`
 			SELECT
-				TO_CHAR(DATE_TRUNC('day', recorded_at AT TIME ZONE 'UTC'), 'YYYY-MM-DD') AS day,
+				TO_CHAR(DATE_TRUNC('day', %s AT TIME ZONE 'UTC'), 'YYYY-MM-DD') AS day,
 				COUNT(CASE WHEN event_type = 'post_view' THEN 1 END),
-				COUNT(DISTINCT CASE WHEN event_type = 'post_view' THEN ip_hash END)
+				COUNT(DISTINCT CASE WHEN event_type = 'post_view' THEN NULLIF(ip_hash, '') END)
 			FROM analytics_events
-			WHERE post_id::text = $1 AND recorded_at >= $2
-			GROUP BY day ORDER BY day ASC LIMIT $3
-		`
-		args = []interface{}{postID, since, days}
+			WHERE post_id::text = $1 AND %s >= $2
+			GROUP BY 1 ORDER BY day ASC LIMIT %d
+		`, eventTimeExpr, eventTimeExpr, limit)
+		args = []interface{}{postID, since}
 	} else {
-		query = `
+		query = fmt.Sprintf(`
 			SELECT
-				TO_CHAR(DATE_TRUNC('day', recorded_at AT TIME ZONE 'UTC'), 'YYYY-MM-DD') AS day,
-				COUNT(CASE WHEN event_type = 'page_view' THEN 1 END),
-				COUNT(DISTINCT CASE WHEN event_type = 'page_view' THEN ip_hash END)
+				TO_CHAR(DATE_TRUNC('day', %s AT TIME ZONE 'UTC'), 'YYYY-MM-DD') AS day,
+				COUNT(CASE WHEN %s THEN 1 END),
+				COUNT(DISTINCT CASE WHEN %s THEN NULLIF(ip_hash, '') END)
 			FROM analytics_events
-			WHERE recorded_at >= $1
-			GROUP BY day ORDER BY day ASC LIMIT $2
-		`
-		args = []interface{}{since, days}
+			WHERE %s >= $1
+			GROUP BY 1 ORDER BY day ASC LIMIT %d
+		`, eventTimeExpr, viewEventsExpr, viewEventsExpr, eventTimeExpr, limit)
+		args = []interface{}{since}
 	}
 
 	rows, err := r.db.DB.QueryContext(ctx, query, args...)
@@ -354,7 +375,7 @@ func (r *Repository) dailyViews(ctx context.Context, since time.Time, days int, 
 	}
 	defer rows.Close()
 
-	var out []DailyStat
+	out := []DailyStat{}
 	for rows.Next() {
 		var s DailyStat
 		if err := rows.Scan(&s.Date, &s.PageViews, &s.UniqueVisitors); err != nil {

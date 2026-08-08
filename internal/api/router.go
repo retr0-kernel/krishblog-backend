@@ -9,7 +9,6 @@ import (
 	"krishblog/internal/analytics"
 	"krishblog/internal/api/health"
 	"krishblog/internal/auth"
-	"krishblog/internal/claps"
 	"krishblog/internal/comments"
 	"krishblog/internal/database"
 	"krishblog/internal/media"
@@ -29,7 +28,6 @@ type Handlers struct {
 	Media       *media.Handler
 	Subscribers *subscribers.Handler
 	Comments    *comments.Handler
-	Claps       *claps.Handler
 }
 
 type RouterConfig struct {
@@ -69,8 +67,6 @@ func Register(e *echo.Echo, h Handlers, cfg RouterConfig) {
 	pub.GET("/sections/:slug", h.Sections.GetBySlug)
 	pub.GET("/posts/:postId/comments", h.Comments.ListPublic)
 	pub.POST("/posts/:postId/comments", h.Comments.Create)
-	pub.GET("/posts/:postId/claps", h.Claps.Get)
-	pub.POST("/posts/:postId/claps", h.Claps.Clap)
 
 	subGroup := v1.Group("/subscribe")
 	subGroup.Use(mw.StrictRateLimiter(cfg.Redis, 10))
