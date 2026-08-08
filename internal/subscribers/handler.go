@@ -2,10 +2,10 @@ package subscribers
 
 import (
 	"errors"
-	"net/http"
 
 	"github.com/labstack/echo/v4"
 
+	mw "krishblog/internal/middleware"
 	"krishblog/pkg/response"
 )
 
@@ -34,8 +34,12 @@ func (h *Handler) Subscribe(c echo.Context) error {
 	if errors.Is(err, ErrAlreadyConfirmed) {
 		return response.OK(c, map[string]string{"message": "You're already subscribed!"})
 	}
+	if errors.Is(err, ErrResent) {
+		return response.OK(c, map[string]string{"message": "Confirmation email resent. Check your inbox."})
+	}
 	if err != nil {
-		return response.InternalServerError(c, "subscribe failed")
+		c.Logger().Error("subscribe failed: ", err)
+		return response.InternalServerError(c, mw.GetRequestID(c))
 	}
 	return response.OK(c, map[string]string{"message": "Check your email to confirm your subscription."})
 }
@@ -50,7 +54,8 @@ func (h *Handler) Confirm(c echo.Context) error {
 		return response.BadRequest(c, "INVALID_TOKEN", "token not found or already confirmed", nil)
 	}
 	if err != nil {
-		return response.InternalServerError(c, "confirm failed")
+		c.Logger().Error("confirm failed: ", err)
+		return response.InternalServerError(c, mw.GetRequestID(c))
 	}
 	return response.OK(c, map[string]string{"message": "Subscription confirmed!"})
 }
@@ -65,7 +70,8 @@ func (h *Handler) Unsubscribe(c echo.Context) error {
 		return response.BadRequest(c, "INVALID_TOKEN", "token not found", nil)
 	}
 	if err != nil {
-		return response.InternalServerError(c, "unsubscribe failed")
+		c.Logger().Error("unsubscribe failed: ", err)
+		return response.InternalServerError(c, mw.GetRequestID(c))
 	}
 	return response.OK(c, map[string]string{"message": "You've been unsubscribed."})
 }
@@ -73,9 +79,10 @@ func (h *Handler) Unsubscribe(c echo.Context) error {
 func (h *Handler) AdminStats(c echo.Context) error {
 	total, confirmed, err := h.svc.Count(c.Request().Context())
 	if err != nil {
-		return response.InternalServerError(c, "stats failed")
+		c.Logger().Error("subscriber stats failed: ", err)
+		return response.InternalServerError(c, mw.GetRequestID(c))
 	}
-	return c.JSON(http.StatusOK, map[string]int{"total": total, "confirmed": confirmed})
+	return response.OK(c, map[string]int{"total": total, "confirmed": confirmed})
 }
 
 func (h *Handler) AdminNotify(c echo.Context) error {
@@ -92,7 +99,7 @@ func (h *Handler) AdminNotify(c echo.Context) error {
 	}
 	if err := h.svc.NotifyNewPost(c.Request().Context(), req.PostTitle, req.PostSlug, req.PostSummary); err != nil {
 		c.Logger().Error("failed to notify subscribers: ", err)
-		return response.InternalServerError(c, "notify failed")
+		return response.InternalServerError(c, mw.GetRequestID(c))
 	}
 	return response.OK(c, map[string]string{"message": "Notifications sent."})
 }

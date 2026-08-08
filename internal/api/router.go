@@ -118,7 +118,7 @@ func Register(e *echo.Echo, h Handlers, cfg RouterConfig) {
 	adminAnalytics.GET("/realtime", h.Analytics.AdminRealtime)
 
 	adminSubs := admin.Group("/subscribers")
-	adminSubs.Use(mw.RequireRole("admin"))
+	adminSubs.Use(mw.RequireRole("editor"))
 	adminSubs.GET("/stats", h.Subscribers.AdminStats)
 	adminSubs.POST("/notify", h.Subscribers.AdminNotify)
 

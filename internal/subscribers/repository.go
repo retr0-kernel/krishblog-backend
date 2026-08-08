@@ -32,7 +32,9 @@ func (r *Repository) Create(ctx context.Context, email, name, token string) (*Su
 		INSERT INTO subscribers (email, name, token, confirmed, created_at, updated_at)
 		VALUES ($1, $2, $3, false, NOW(), NOW())
 		ON CONFLICT (email) DO UPDATE
-		  SET name=EXCLUDED.name, token=EXCLUDED.token, updated_at=NOW()
+		  SET name = EXCLUDED.name,
+		      token = CASE WHEN subscribers.confirmed THEN subscribers.token ELSE EXCLUDED.token END,
+		      updated_at = NOW()
 		RETURNING id, email, name, confirmed, token, confirmed_at, created_at`
 
 	s := &Subscriber{}

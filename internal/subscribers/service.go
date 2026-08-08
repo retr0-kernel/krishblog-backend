@@ -36,36 +36,6 @@ func NewService(repo *Repository, cfg EmailConfig, log *slog.Logger) *Service {
 	return &Service{repo: repo, cfg: cfg, log: log}
 }
 
-// Subscribe creates a subscriber and sends a confirmation email.
-// The email is sent asynchronously so that SMTP issues never block or fail the HTTP response.
-func (s *Service) Subscribe(ctx context.Context, email, name string) error {
-	token, err := generateToken()
-	if err != nil {
-		return fmt.Errorf("generate token: %w", err)
-	}
-
-	sub, err := s.repo.Create(ctx, email, name, token)
-	if err != nil {
-		return err
-	}
-
-	if sub.Confirmed {
-		return ErrAlreadyConfirmed
-	}
-
-	// Fire-and-forget: SMTP errors are logged but never returned to the caller.
-	go func() {
-		if err := s.sendConfirmation(sub); err != nil {
-			s.log.Error("failed to send confirmation email",
-				slog.String("email", sub.Email),
-				slog.String("error", err.Error()),
-			)
-		}
-	}()
-
-	return nil
-}
-
 // Confirm marks subscriber as confirmed.
 func (s *Service) Confirm(ctx context.Context, token string) (*Subscriber, error) {
 	return s.repo.Confirm(ctx, token)
@@ -159,8 +129,10 @@ func (s *Service) sendEmail(to, subject, body string) error {
 		)
 		return nil
 	}
+	fromHeader := NormalizeEmailFrom(s.cfg.From)
+	envelope := envelopeFrom(fromHeader)
 	msg := strings.Join([]string{
-		"From: " + s.cfg.From,
+		"From: " + fromHeader,
 		"To: " + to,
 		"Subject: " + subject,
 		"MIME-Version: 1.0",
@@ -173,7 +145,15 @@ func (s *Service) sendEmail(to, subject, body string) error {
 	if s.cfg.Username != "" {
 		auth = smtp.PlainAuth("", s.cfg.Username, s.cfg.Password, s.cfg.Host)
 	}
-	return smtp.SendMail(addr, auth, s.cfg.From, []string{to}, []byte(msg))
+	if err := smtp.SendMail(addr, auth, envelope, []string{to}, []byte(msg)); err != nil {
+		s.log.Error("smtp send failed",
+			slog.String("to", to),
+			slog.String("envelope", envelope),
+			slog.String("error", err.Error()),
+		)
+		return err
+	}
+	return nil
 }
 
 func generateToken() (string, error) {

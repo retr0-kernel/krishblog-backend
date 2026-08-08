@@ -9,6 +9,18 @@ import (
 // Idempotent — uses IF NOT EXISTS.
 func RunCustomMigrations(ctx context.Context, pg *Postgres) error {
 	statements := []string{
+		`CREATE TABLE IF NOT EXISTS subscribers (
+			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+			email TEXT NOT NULL UNIQUE,
+			name TEXT NOT NULL DEFAULT '',
+			token TEXT NOT NULL UNIQUE,
+			confirmed BOOLEAN NOT NULL DEFAULT FALSE,
+			confirmed_at TIMESTAMPTZ,
+			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+			updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_subscribers_token ON subscribers(token)`,
+		`CREATE INDEX IF NOT EXISTS idx_subscribers_confirmed ON subscribers(confirmed)`,
 		`CREATE TABLE IF NOT EXISTS comments (
 			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
 			post_id UUID NOT NULL REFERENCES posts(id) ON DELETE CASCADE,

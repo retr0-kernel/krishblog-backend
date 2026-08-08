@@ -7,6 +7,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
+
 	"krishblog/internal/database"
 	"krishblog/pkg/pagination"
 )
@@ -149,15 +151,16 @@ func (r *Repository) Create(ctx context.Context, authorID string, req CreateRequ
 	}
 	wc := wordCount(req.Content)
 	rtm := readingTime(wc)
+	id := uuid.New().String()
 
 	const q = `
         INSERT INTO posts (
-            section_id, author_id, title, slug, summary, content,
+            id, section_id, author_id, title, slug, summary, content,
             cover_image, cover_image_alt, status, is_featured,
             read_time, word_count, meta_title, meta_desc,
             scheduled_at, published_at, created_at, updated_at
         ) VALUES (
-            $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,NOW(),NOW()
+            $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,NOW(),NOW()
         )
         RETURNING id, section_id, ''::text, author_id, title, slug,
                   COALESCE(summary,''), COALESCE(cover_image,''), COALESCE(cover_image_alt,''),
@@ -166,7 +169,7 @@ func (r *Repository) Create(ctx context.Context, authorID string, req CreateRequ
                   COALESCE(content,''), COALESCE(meta_title,''), COALESCE(meta_desc,'')`
 
 	return r.scanOne(ctx, q,
-		req.SectionID, authorID, req.Title, sl, req.Excerpt, req.Content,
+		id, req.SectionID, authorID, req.Title, sl, req.Excerpt, req.Content,
 		req.CoverImage, req.CoverImageAlt, status, req.IsFeatured,
 		rtm, wc, req.MetaTitle, req.MetaDesc, req.ScheduledAt, publishedAt,
 	)

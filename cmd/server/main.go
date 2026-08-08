@@ -55,6 +55,11 @@ func main() {
 	defer pg.Close()
 	log.Info("postgres connected")
 
+	if err := database.RunCustomMigrations(context.Background(), pg); err != nil {
+		log.Error("custom migrations failed", "error", err)
+		os.Exit(1)
+	}
+
 	// ── Redis ─────────────────────────────────────────────────────────────────
 	redis, err := database.NewRedis(cfg.Redis.URL)
 	if err != nil {
@@ -92,7 +97,7 @@ func main() {
 		Port:     cfg.Email.Port,
 		Username: cfg.Email.Username,
 		Password: cfg.Email.Password,
-		From:     cfg.Email.From,
+		From:     subscribers.NormalizeEmailFrom(cfg.Email.From),
 		SiteURL:  cfg.Site.URL,
 		SiteName: cfg.Site.Name,
 	}, log)

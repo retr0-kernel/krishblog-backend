@@ -56,15 +56,15 @@ func (s *Service) List(_ context.Context, _ string, _ pagination.Params) ([]Medi
 }
 
 func (s *Service) Upload(_ context.Context, _, _, _ string, _ int64, _ []byte) (*MediaResponse, error) {
-	return nil, errors.New("not implemented: wire R2 + Ent in step 2")
+	return nil, errors.New("images are hosted in the krishblog-images GitHub repo — use a raw.githubusercontent.com URL")
 }
 
 func (s *Service) Update(_ context.Context, _ string, _ UpdateRequest) (*MediaResponse, error) {
-	return nil, errors.New("not implemented: wire Ent in step 2")
+	return nil, errors.New("not implemented")
 }
 
 func (s *Service) Delete(_ context.Context, _ string) error {
-	return errors.New("not implemented: wire R2 + Ent in step 2")
+	return errors.New("not implemented")
 }
 
 // ─── Handler ──────────────────────────────────────────────────────────────────
@@ -112,7 +112,7 @@ func (h *Handler) Upload(c echo.Context) error {
 		data,
 	)
 	if err != nil {
-		return response.InternalServerError(c, mw.GetRequestID(c))
+		return response.BadRequest(c, "USE_GITHUB_IMAGES", "Add images to github.com/retr0-kernel/krishblog-images and paste the raw URL in your post", nil)
 	}
 	return response.Created(c, asset)
 }

@@ -130,7 +130,14 @@ func Load() (*Config, error) {
 	cfg.R2.PublicURL = getDefault("R2_PUBLIC_URL", "")
 
 	originsRaw := getDefault("ALLOWED_ORIGINS", "http://localhost:3000")
-	cfg.CORS.AllowedOrigins = strings.Split(originsRaw, ",")
+	origins := strings.Split(originsRaw, ",")
+	cfg.CORS.AllowedOrigins = make([]string, 0, len(origins))
+	for _, origin := range origins {
+		origin = strings.TrimSpace(strings.TrimRight(origin, "/"))
+		if origin != "" {
+			cfg.CORS.AllowedOrigins = append(cfg.CORS.AllowedOrigins, origin)
+		}
+	}
 
 	rps, err := strconv.ParseFloat(getDefault("RATE_LIMIT_RPS", "20"), 64)
 	if err != nil {
@@ -151,9 +158,9 @@ func Load() (*Config, error) {
 	cfg.Email.Port = getDefault("SMTP_PORT", "587")
 	cfg.Email.Username = getDefault("SMTP_USERNAME", "")
 	cfg.Email.Password = getDefault("SMTP_PASSWORD", "")
-	cfg.Email.From = getDefault("SMTP_FROM", "noreply@example.com")
+	cfg.Email.From = getDefault("SMTP_FROM", "Krish Blog <onboarding@resend.dev>")
 
-	cfg.Site.URL = getDefault("SITE_URL", "http://localhost:3000")
+	cfg.Site.URL = strings.TrimRight(getDefault("SITE_URL", "http://localhost:3000"), "/")
 	cfg.Site.Name = getDefault("SITE_NAME", "Krish Blog")
 
 	// Google OAuth — optional, only needed if using Google login
