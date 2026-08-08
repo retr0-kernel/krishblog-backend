@@ -11,6 +11,7 @@ import (
 	"mime/quotedprintable"
 	"net/smtp"
 	"strings"
+	"time"
 )
 
 var ErrNotFound = errors.New("subscriber not found")
@@ -97,6 +98,32 @@ func (s *Service) NotifyNewPost(ctx context.Context, postID, postTitle, postSlug
 	}
 
 	return result, nil
+}
+
+// QueueNotifyNewPost sends new-post emails in the background and returns immediately.
+func (s *Service) QueueNotifyNewPost(postID, postTitle, postSlug, postSummary string) (int, error) {
+	subs, err := s.repo.ListConfirmed(context.Background())
+	if err != nil {
+		return 0, fmt.Errorf("list confirmed: %w", err)
+	}
+
+	total := len(subs)
+	if total == 0 {
+		return 0, nil
+	}
+
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+		defer cancel()
+		if _, err := s.NotifyNewPost(ctx, postID, postTitle, postSlug, postSummary); err != nil {
+			s.log.Error("background notify failed",
+				slog.String("post", postTitle),
+				slog.String("error", err.Error()),
+			)
+		}
+	}()
+
+	return total, nil
 }
 
 // Count returns subscriber counts.

@@ -106,15 +106,16 @@ func (h *Handler) AdminNotify(c echo.Context) error {
 	if req.PostTitle == "" || req.PostSlug == "" {
 		return response.BadRequest(c, "MISSING_FIELDS", "post_title and post_slug are required", nil)
 	}
-	result, err := h.svc.NotifyNewPost(c.Request().Context(), req.PostID, req.PostTitle, req.PostSlug, req.PostSummary)
+	result, err := h.svc.QueueNotifyNewPost(req.PostID, req.PostTitle, req.PostSlug, req.PostSummary)
 	if err != nil {
-		c.Logger().Error("failed to notify subscribers: ", err)
+		c.Logger().Error("failed to queue subscriber notifications: ", err)
 		return response.InternalServerError(c, mw.GetRequestID(c))
 	}
 	return response.OK(c, map[string]interface{}{
-		"message":          "Notifications sent.",
-		"total_confirmed":  result.TotalConfirmed,
-		"sent_count":       result.SentCount,
-		"failed_count":     result.FailedCount,
+		"message":         "Notifications queued.",
+		"queued":          true,
+		"total_confirmed": result,
+		"sent_count":      0,
+		"failed_count":    0,
 	})
 }

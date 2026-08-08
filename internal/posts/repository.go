@@ -185,8 +185,14 @@ func (r *Repository) Update(ctx context.Context, id string, req UpdateRequest) (
 	excerpt := coalesceStr(req.Excerpt, curr.Excerpt)
 	content := coalesceStr(req.Content, curr.Content)
 	sl := coalesceStr(req.Slug, curr.Slug)
-	coverImage := coalesceStr(req.CoverImage, curr.CoverImage)
-	coverImageAlt := coalesceStr(req.CoverImageAlt, curr.CoverImageAlt)
+	coverImage := curr.CoverImage
+	if req.CoverImage != nil {
+		coverImage = *req.CoverImage
+	}
+	coverImageAlt := curr.CoverImageAlt
+	if req.CoverImageAlt != nil {
+		coverImageAlt = *req.CoverImageAlt
+	}
 	sectionID := coalesceStr(req.SectionID, curr.SectionID)
 	metaTitle := coalesceStr(req.MetaTitle, curr.MetaTitle)
 	metaDesc := coalesceStr(req.MetaDesc, curr.MetaDesc)

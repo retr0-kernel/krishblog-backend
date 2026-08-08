@@ -32,8 +32,8 @@ type UpdateRequest struct {
 	Slug          string     `json:"slug"            validate:"omitempty,min=3,max=300"`
 	Excerpt       string     `json:"excerpt"         validate:"omitempty,max=500"`
 	Content       string     `json:"content"`
-	CoverImage    string     `json:"cover_image"     validate:"omitempty,url"`
-	CoverImageAlt string     `json:"cover_image_alt"`
+	CoverImage    *string    `json:"cover_image"`
+	CoverImageAlt *string    `json:"cover_image_alt"`
 	IsFeatured    *bool      `json:"is_featured"`
 	MetaTitle     string     `json:"meta_title"      validate:"omitempty,max=70"`
 	MetaDesc      string     `json:"meta_desc"       validate:"omitempty,max=160"`
