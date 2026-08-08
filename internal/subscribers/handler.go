@@ -2,6 +2,7 @@ package subscribers
 
 import (
 	"errors"
+	"strings"
 
 	"github.com/labstack/echo/v4"
 
@@ -27,10 +28,11 @@ func (h *Handler) Subscribe(c echo.Context) error {
 	if err := c.Bind(&req); err != nil {
 		return response.BadRequest(c, "INVALID_BODY", "invalid request body", nil)
 	}
-	if req.Email == "" {
-		return response.BadRequest(c, "MISSING_EMAIL", "email is required", nil)
+	email, err := normalizeEmail(req.Email)
+	if err != nil {
+		return response.BadRequest(c, "INVALID_EMAIL", err.Error(), nil)
 	}
-	err := h.svc.Subscribe(c.Request().Context(), req.Email, req.Name)
+	err = h.svc.Subscribe(c.Request().Context(), email, strings.TrimSpace(req.Name))
 	if errors.Is(err, ErrAlreadyConfirmed) {
 		return response.OK(c, map[string]string{"message": "You're already subscribed!"})
 	}

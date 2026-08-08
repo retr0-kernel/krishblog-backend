@@ -98,13 +98,14 @@ func main() {
 
 	subRepo := subscribers.NewRepository(pg)
 	subSvc := subscribers.NewService(subRepo, subscribers.EmailConfig{
-		Host:     cfg.Email.Host,
-		Port:     cfg.Email.Port,
-		Username: cfg.Email.Username,
-		Password: cfg.Email.Password,
-		From:     subscribers.NormalizeEmailFrom(cfg.Email.From),
-		SiteURL:  cfg.Site.URL,
-		SiteName: cfg.Site.Name,
+		ResendAPIKey: cfg.Email.ResendAPIKey,
+		Host:         cfg.Email.Host,
+		Port:         cfg.Email.Port,
+		Username:     cfg.Email.Username,
+		Password:     cfg.Email.Password,
+		From:         subscribers.NormalizeEmailFrom(cfg.Email.From),
+		SiteURL:      cfg.Site.URL,
+		SiteName:     cfg.Site.Name,
 	}, log)
 
 	commentsSvc := comments.NewService(pg)

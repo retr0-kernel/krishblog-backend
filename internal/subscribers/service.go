@@ -17,15 +17,17 @@ var ErrNotFound = errors.New("subscriber not found")
 var ErrAlreadyConfirmed = errors.New("subscriber already confirmed")
 var ErrTokenExpired = errors.New("confirmation link expired")
 
-// EmailConfig holds SMTP settings.
+// EmailConfig holds email delivery settings.
+// Prefer ResendAPIKey on Railway and other hosts that block outbound SMTP.
 type EmailConfig struct {
-	Host     string
-	Port     string
-	Username string
-	Password string
-	From     string
-	SiteURL  string
-	SiteName string
+	ResendAPIKey string
+	Host         string
+	Port         string
+	Username     string
+	Password     string
+	From         string
+	SiteURL      string
+	SiteName     string
 }
 
 // Service handles subscriber business logic and email dispatch.
@@ -136,8 +138,20 @@ func (s *Service) sendNewPostEmail(sub Subscriber, title, postURL, summary, unsu
 }
 
 func (s *Service) sendEmail(to, subject, textBody, htmlBody string) error {
+	if s.cfg.ResendAPIKey != "" {
+		if err := s.sendViaResend(to, subject, textBody, htmlBody); err != nil {
+			s.log.Error("resend send failed",
+				slog.String("to", to),
+				slog.String("from", s.cfg.From),
+				slog.String("error", err.Error()),
+			)
+			return err
+		}
+		return nil
+	}
+
 	if s.cfg.Host == "" {
-		// No SMTP configured — just log (dev mode)
+		// No email transport configured — just log (dev mode)
 		s.log.Info("email (dev mode - not sent)",
 			slog.String("to", to),
 			slog.String("subject", subject),

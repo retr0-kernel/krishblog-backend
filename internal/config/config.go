@@ -67,11 +67,12 @@ type AdminConfig struct {
 }
 
 type EmailConfig struct {
-	Host     string
-	Port     string
-	Username string
-	Password string
-	From     string
+	ResendAPIKey string
+	Host         string
+	Port         string
+	Username     string
+	Password     string
+	From         string
 }
 
 type SiteConfig struct {
@@ -154,11 +155,15 @@ func Load() (*Config, error) {
 	cfg.Admin.Email = getDefault("ADMIN_EMAIL", "")
 	cfg.Admin.Password = getDefault("ADMIN_PASSWORD", "")
 
+	cfg.Email.ResendAPIKey = getDefault("RESEND_API_KEY", "")
 	cfg.Email.Host = getDefault("SMTP_HOST", "")
 	cfg.Email.Port = getDefault("SMTP_PORT", "587")
 	cfg.Email.Username = getDefault("SMTP_USERNAME", "")
 	cfg.Email.Password = getDefault("SMTP_PASSWORD", "")
 	cfg.Email.From = getDefault("SMTP_FROM", "Krish Blog <onboarding@resend.dev>")
+	if cfg.Email.ResendAPIKey == "" && strings.HasPrefix(cfg.Email.Password, "re_") {
+		cfg.Email.ResendAPIKey = cfg.Email.Password
+	}
 
 	cfg.Site.URL = strings.TrimRight(getDefault("SITE_URL", "http://localhost:3000"), "/")
 	cfg.Site.Name = getDefault("SITE_NAME", "Krish Blog")
