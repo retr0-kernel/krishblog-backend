@@ -83,16 +83,17 @@ func (h *Handler) Unsubscribe(c echo.Context) error {
 }
 
 func (h *Handler) AdminStats(c echo.Context) error {
-	total, confirmed, err := h.svc.Count(c.Request().Context())
+	stats, err := h.svc.AdminStats(c.Request().Context())
 	if err != nil {
 		c.Logger().Error("subscriber stats failed: ", err)
 		return response.InternalServerError(c, mw.GetRequestID(c))
 	}
-	return response.OK(c, map[string]int{"total": total, "confirmed": confirmed})
+	return response.OK(c, stats)
 }
 
 func (h *Handler) AdminNotify(c echo.Context) error {
 	var req struct {
+		PostID      string `json:"post_id"`
 		PostTitle   string `json:"post_title"`
 		PostSlug    string `json:"post_slug"`
 		PostSummary string `json:"post_summary"`
@@ -103,9 +104,15 @@ func (h *Handler) AdminNotify(c echo.Context) error {
 	if req.PostTitle == "" || req.PostSlug == "" {
 		return response.BadRequest(c, "MISSING_FIELDS", "post_title and post_slug are required", nil)
 	}
-	if err := h.svc.NotifyNewPost(c.Request().Context(), req.PostTitle, req.PostSlug, req.PostSummary); err != nil {
+	result, err := h.svc.NotifyNewPost(c.Request().Context(), req.PostID, req.PostTitle, req.PostSlug, req.PostSummary)
+	if err != nil {
 		c.Logger().Error("failed to notify subscribers: ", err)
 		return response.InternalServerError(c, mw.GetRequestID(c))
 	}
-	return response.OK(c, map[string]string{"message": "Notifications sent."})
+	return response.OK(c, map[string]interface{}{
+		"message":          "Notifications sent.",
+		"total_confirmed":  result.TotalConfirmed,
+		"sent_count":       result.SentCount,
+		"failed_count":     result.FailedCount,
+	})
 }

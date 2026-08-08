@@ -36,6 +36,18 @@ func RunCustomMigrations(ctx context.Context, pg *Postgres) error {
 		`CREATE INDEX IF NOT EXISTS idx_comments_post_id ON comments(post_id)`,
 		`CREATE INDEX IF NOT EXISTS idx_comments_parent_id ON comments(parent_id)`,
 		`CREATE INDEX IF NOT EXISTS idx_comments_approved ON comments(is_approved)`,
+		`CREATE TABLE IF NOT EXISTS post_notifications (
+			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+			post_id UUID NOT NULL REFERENCES posts(id) ON DELETE CASCADE,
+			post_slug TEXT NOT NULL,
+			post_title TEXT NOT NULL,
+			total_confirmed INT NOT NULL DEFAULT 0,
+			sent_count INT NOT NULL DEFAULT 0,
+			failed_count INT NOT NULL DEFAULT 0,
+			notified_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_post_notifications_post_id ON post_notifications(post_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_post_notifications_notified_at ON post_notifications(notified_at DESC)`,
 	}
 
 	for _, stmt := range statements {

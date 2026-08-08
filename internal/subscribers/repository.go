@@ -131,10 +131,71 @@ func (r *Repository) ListConfirmed(ctx context.Context) ([]Subscriber, error) {
 	return subs, rows.Err()
 }
 
-func (r *Repository) Count(ctx context.Context) (total int, confirmed int, err error) {
-	const q = `SELECT COUNT(*), COUNT(*) FILTER (WHERE confirmed=true) FROM subscribers`
-	err = r.db.DB.QueryRowContext(ctx, q).Scan(&total, &confirmed)
+func (r *Repository) Count(ctx context.Context) (total int, confirmed int, pending int, err error) {
+	const q = `
+		SELECT
+			COUNT(*),
+			COUNT(*) FILTER (WHERE confirmed=true),
+			COUNT(*) FILTER (WHERE confirmed=false)
+		FROM subscribers`
+	err = r.db.DB.QueryRowContext(ctx, q).Scan(&total, &confirmed, &pending)
 	return
+}
+
+type PostNotification struct {
+	ID             string    `json:"id"`
+	PostID         string    `json:"post_id"`
+	PostSlug       string    `json:"post_slug"`
+	PostTitle      string    `json:"post_title"`
+	TotalConfirmed int       `json:"total_confirmed"`
+	SentCount      int       `json:"sent_count"`
+	FailedCount    int       `json:"failed_count"`
+	NotifiedAt     time.Time `json:"notified_at"`
+}
+
+func (r *Repository) RecordNotification(ctx context.Context, postID, slug, title string, total, sent, failed int) error {
+	_, err := r.db.DB.ExecContext(ctx, `
+		INSERT INTO post_notifications (
+			post_id, post_slug, post_title, total_confirmed, sent_count, failed_count, notified_at
+		) VALUES ($1, $2, $3, $4, $5, $6, NOW())`,
+		postID, slug, title, total, sent, failed,
+	)
+	if err != nil {
+		return fmt.Errorf("record notification: %w", err)
+	}
+	return nil
+}
+
+func (r *Repository) ListRecentNotifications(ctx context.Context, limit int) ([]PostNotification, error) {
+	if limit <= 0 {
+		limit = 10
+	}
+	if limit > 50 {
+		limit = 50
+	}
+
+	rows, err := r.db.DB.QueryContext(ctx, fmt.Sprintf(`
+		SELECT id, post_id::text, post_slug, post_title, total_confirmed, sent_count, failed_count, notified_at
+		FROM post_notifications
+		ORDER BY notified_at DESC
+		LIMIT %d`, limit))
+	if err != nil {
+		return nil, fmt.Errorf("list notifications: %w", err)
+	}
+	defer rows.Close()
+
+	out := []PostNotification{}
+	for rows.Next() {
+		var n PostNotification
+		if err := rows.Scan(
+			&n.ID, &n.PostID, &n.PostSlug, &n.PostTitle,
+			&n.TotalConfirmed, &n.SentCount, &n.FailedCount, &n.NotifiedAt,
+		); err != nil {
+			return nil, err
+		}
+		out = append(out, n)
+	}
+	return out, rows.Err()
 }
 
 func (r *Repository) GetByEmail(ctx context.Context, email string) (*Subscriber, error) {

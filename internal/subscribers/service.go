@@ -49,32 +49,75 @@ func (s *Service) Unsubscribe(ctx context.Context, token string) error {
 	return s.repo.Unsubscribe(ctx, token)
 }
 
+// NotifyResult summarizes a new-post email batch.
+type NotifyResult struct {
+	TotalConfirmed int `json:"total_confirmed"`
+	SentCount      int `json:"sent_count"`
+	FailedCount    int `json:"failed_count"`
+}
+
+// AdminStatsResponse is returned by GET /admin/subscribers/stats.
+type AdminStatsResponse struct {
+	Total               int                `json:"total"`
+	Confirmed           int                `json:"confirmed"`
+	Pending             int                `json:"pending"`
+	RecentNotifications []PostNotification `json:"recent_notifications"`
+}
+
 // NotifyNewPost sends a new-post email to all confirmed subscribers.
-func (s *Service) NotifyNewPost(ctx context.Context, postTitle, postSlug, postSummary string) error {
+func (s *Service) NotifyNewPost(ctx context.Context, postID, postTitle, postSlug, postSummary string) (*NotifyResult, error) {
 	subs, err := s.repo.ListConfirmed(ctx)
 	if err != nil {
-		return fmt.Errorf("list confirmed: %w", err)
+		return nil, fmt.Errorf("list confirmed: %w", err)
 	}
 
+	result := &NotifyResult{TotalConfirmed: len(subs)}
 	postURL := fmt.Sprintf("%s/post/%s", s.cfg.SiteURL, postSlug)
 
 	for _, sub := range subs {
 		unsubURL := fmt.Sprintf("%s/unsubscribe?token=%s", s.cfg.SiteURL, sub.Token)
 		if err := s.sendNewPostEmail(sub, postTitle, postURL, postSummary, unsubURL); err != nil {
-			// Log but continue — don't fail the whole batch for one bad address
+			result.FailedCount++
 			s.log.Error("failed to send new post notification",
 				slog.String("email", sub.Email),
 				slog.String("post", postTitle),
 				slog.String("error", err.Error()),
 			)
+			continue
+		}
+		result.SentCount++
+	}
+
+	if postID != "" {
+		if err := s.repo.RecordNotification(ctx, postID, postSlug, postTitle, result.TotalConfirmed, result.SentCount, result.FailedCount); err != nil {
+			s.log.Error("failed to record notification stats", slog.String("error", err.Error()))
 		}
 	}
-	return nil
+
+	return result, nil
 }
 
 // Count returns subscriber counts.
-func (s *Service) Count(ctx context.Context) (total int, confirmed int, err error) {
+func (s *Service) Count(ctx context.Context) (total int, confirmed int, pending int, err error) {
 	return s.repo.Count(ctx)
+}
+
+// AdminStats returns subscriber totals and recent notification batches.
+func (s *Service) AdminStats(ctx context.Context) (*AdminStatsResponse, error) {
+	total, confirmed, pending, err := s.repo.Count(ctx)
+	if err != nil {
+		return nil, err
+	}
+	notifications, err := s.repo.ListRecentNotifications(ctx, 20)
+	if err != nil {
+		return nil, err
+	}
+	return &AdminStatsResponse{
+		Total:               total,
+		Confirmed:           confirmed,
+		Pending:             pending,
+		RecentNotifications: notifications,
+	}, nil
 }
 
 // ─── email helpers ────────────────────────────────────────────────────────────
