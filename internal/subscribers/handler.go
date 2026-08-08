@@ -50,6 +50,12 @@ func (h *Handler) Confirm(c echo.Context) error {
 		return response.BadRequest(c, "MISSING_TOKEN", "token is required", nil)
 	}
 	_, err := h.svc.Confirm(c.Request().Context(), token)
+	if errors.Is(err, ErrAlreadyConfirmed) {
+		return response.OK(c, map[string]string{"message": "You're already subscribed!"})
+	}
+	if errors.Is(err, ErrTokenExpired) {
+		return response.BadRequest(c, "TOKEN_EXPIRED", "this confirmation link has expired — please subscribe again", nil)
+	}
 	if errors.Is(err, ErrNotFound) {
 		return response.BadRequest(c, "INVALID_TOKEN", "token not found or already confirmed", nil)
 	}

@@ -9,6 +9,8 @@ import (
 	"krishblog/internal/database"
 )
 
+const confirmationTokenTTL = 7 * 24 * time.Hour
+
 type Subscriber struct {
 	ID          string     `json:"id"`
 	Email       string     `json:"email"`
@@ -48,14 +50,36 @@ func (r *Repository) Create(ctx context.Context, email, name, token string) (*Su
 }
 
 func (r *Repository) Confirm(ctx context.Context, token string) (*Subscriber, error) {
+	const lookup = `
+		SELECT id, email, name, confirmed, token, confirmed_at, created_at, updated_at
+		FROM subscribers WHERE token=$1`
+
+	s := &Subscriber{}
+	var updatedAt time.Time
+	err := r.db.DB.QueryRowContext(ctx, lookup, token).Scan(
+		&s.ID, &s.Email, &s.Name, &s.Confirmed,
+		&s.Token, &s.ConfirmedAt, &s.CreatedAt, &updatedAt,
+	)
+	if err == sql.ErrNoRows {
+		return nil, ErrNotFound
+	}
+	if err != nil {
+		return nil, fmt.Errorf("lookup subscriber: %w", err)
+	}
+	if s.Confirmed {
+		return s, ErrAlreadyConfirmed
+	}
+	if time.Since(updatedAt) > confirmationTokenTTL {
+		return nil, ErrTokenExpired
+	}
+
 	const q = `
 		UPDATE subscribers
 		SET confirmed=true, confirmed_at=NOW(), updated_at=NOW()
 		WHERE token=$1 AND confirmed=false
 		RETURNING id, email, name, confirmed, token, confirmed_at, created_at`
 
-	s := &Subscriber{}
-	err := r.db.DB.QueryRowContext(ctx, q, token).Scan(
+	err = r.db.DB.QueryRowContext(ctx, q, token).Scan(
 		&s.ID, &s.Email, &s.Name, &s.Confirmed, &s.Token, &s.ConfirmedAt, &s.CreatedAt,
 	)
 	if err == sql.ErrNoRows {

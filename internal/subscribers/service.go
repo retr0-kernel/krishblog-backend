@@ -7,12 +7,15 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"mime"
+	"mime/quotedprintable"
 	"net/smtp"
 	"strings"
 )
 
 var ErrNotFound = errors.New("subscriber not found")
 var ErrAlreadyConfirmed = errors.New("subscriber already confirmed")
+var ErrTokenExpired = errors.New("confirmation link expired")
 
 // EmailConfig holds SMTP settings.
 type EmailConfig struct {
@@ -79,48 +82,17 @@ func (s *Service) Count(ctx context.Context) (total int, confirmed int, err erro
 func (s *Service) sendConfirmation(sub *Subscriber) error {
 	confirmURL := fmt.Sprintf("%s/confirm-subscription?token=%s", s.cfg.SiteURL, sub.Token)
 	subject := fmt.Sprintf("Confirm your subscription to %s", s.cfg.SiteName)
-	body := fmt.Sprintf(`Hello%s,
-
-Thanks for subscribing to %s!
-
-Please confirm your email address by clicking the link below:
-
-%s
-
-If you didn't subscribe, you can safely ignore this email.
-
-— %s`, nameGreeting(sub.Name), s.cfg.SiteName, confirmURL, s.cfg.SiteName)
-
-	return s.sendEmail(sub.Email, subject, body)
+	text, htmlBody := confirmationBodies(s.cfg.SiteName, confirmURL, sub.Name)
+	return s.sendEmail(sub.Email, subject, text, htmlBody)
 }
 
 func (s *Service) sendNewPostEmail(sub Subscriber, title, postURL, summary, unsubURL string) error {
 	subject := fmt.Sprintf("New post: %s", title)
-	body := fmt.Sprintf(`Hello%s,
-
-A new post has been published on %s:
-
-%s
-
-%s
-
-Read it here: %s
-
-─────────────────────────────
-You're receiving this because you subscribed to %s.
-To unsubscribe: %s`,
-		nameGreeting(sub.Name),
-		s.cfg.SiteName,
-		title,
-		summary,
-		postURL,
-		s.cfg.SiteName,
-		unsubURL,
-	)
-	return s.sendEmail(sub.Email, subject, body)
+	text, htmlBody := newPostBodies(s.cfg.SiteName, title, summary, postURL, unsubURL, sub.Name)
+	return s.sendEmail(sub.Email, subject, text, htmlBody)
 }
 
-func (s *Service) sendEmail(to, subject, body string) error {
+func (s *Service) sendEmail(to, subject, textBody, htmlBody string) error {
 	if s.cfg.Host == "" {
 		// No SMTP configured — just log (dev mode)
 		s.log.Info("email (dev mode - not sent)",
@@ -131,21 +103,41 @@ func (s *Service) sendEmail(to, subject, body string) error {
 	}
 	fromHeader := NormalizeEmailFrom(s.cfg.From)
 	envelope := envelopeFrom(fromHeader)
-	msg := strings.Join([]string{
-		"From: " + fromHeader,
-		"To: " + to,
-		"Subject: " + subject,
-		"MIME-Version: 1.0",
-		"Content-Type: text/plain; charset=UTF-8",
-		"",
-		body,
-	}, "\r\n")
+
+	var msg strings.Builder
+	boundary := "krishblog-" + mustToken(8)
+	msg.WriteString("From: " + fromHeader + "\r\n")
+	msg.WriteString("To: " + to + "\r\n")
+	msg.WriteString("Subject: " + mime.QEncoding.Encode("utf-8", subject) + "\r\n")
+	msg.WriteString("MIME-Version: 1.0\r\n")
+	msg.WriteString("Content-Type: multipart/alternative; boundary=" + boundary + "\r\n")
+	msg.WriteString("\r\n")
+
+	writePart := func(contentType, body string) {
+		msg.WriteString("--" + boundary + "\r\n")
+		msg.WriteString("Content-Type: " + contentType + "; charset=UTF-8\r\n")
+		msg.WriteString("Content-Transfer-Encoding: quoted-printable\r\n")
+		msg.WriteString("\r\n")
+		var qp strings.Builder
+		w := quotedprintable.NewWriter(&qp)
+		_, _ = w.Write([]byte(body))
+		_ = w.Close()
+		msg.WriteString(qp.String())
+		msg.WriteString("\r\n")
+	}
+
+	writePart("text/plain", textBody)
+	if htmlBody != "" {
+		writePart("text/html", htmlBody)
+	}
+	msg.WriteString("--" + boundary + "--\r\n")
+
 	addr := s.cfg.Host + ":" + s.cfg.Port
 	var auth smtp.Auth
 	if s.cfg.Username != "" {
 		auth = smtp.PlainAuth("", s.cfg.Username, s.cfg.Password, s.cfg.Host)
 	}
-	if err := smtp.SendMail(addr, auth, envelope, []string{to}, []byte(msg)); err != nil {
+	if err := smtp.SendMail(addr, auth, envelope, []string{to}, []byte(msg.String())); err != nil {
 		s.log.Error("smtp send failed",
 			slog.String("to", to),
 			slog.String("envelope", envelope),
@@ -156,17 +148,21 @@ func (s *Service) sendEmail(to, subject, body string) error {
 	return nil
 }
 
+func mustToken(n int) string {
+	t, err := generateToken()
+	if err != nil {
+		return "fallback"
+	}
+	if len(t) > n*2 {
+		return t[:n*2]
+	}
+	return t
+}
+
 func generateToken() (string, error) {
 	b := make([]byte, 24)
 	if _, err := rand.Read(b); err != nil {
 		return "", err
 	}
 	return hex.EncodeToString(b), nil
-}
-
-func nameGreeting(name string) string {
-	if name == "" {
-		return ""
-	}
-	return " " + name
 }
