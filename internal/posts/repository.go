@@ -70,7 +70,7 @@ func (r *Repository) ListPublished(ctx context.Context, section, tag, query stri
 		FROM posts p
 		LEFT JOIN sections s ON s.id = p.section_id
 		%s
-		ORDER BY p.published_at DESC
+		ORDER BY p.published_at DESC NULLS LAST, p.created_at DESC
 		LIMIT $%d OFFSET $%d`, whereClause, i, i+1)
 
 	posts, err := r.scanList(ctx, listQ, args...)
